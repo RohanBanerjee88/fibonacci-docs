@@ -1,0 +1,539 @@
+---
+title: 'Security'
+description: 'Secure your Fibonacci workflows with authentication, encryption, and access controls'
+---
+
+Security is critical for production workflows. This guide covers authentication, secrets management, encryption, access controls, and security best practices.
+
+## Authentication
+
+### API Key Management
+
+Store API keys securely using Fibonacci's keychain integration:
+
+```python
+from fibonacci import SecureConfig
+from fibonacci.security import KeychainStorage
+
+# Store API key in system keychain
+keychain = KeychainStorage()
+keychain.set("fibonacci_api_key", "your-api-key")
+
+# Use in workflow
+config = SecureConfig(
+    api_key=keychain.get("fibonacci_api_key")
+)
+```
+
+### Supported Keychain Backends
+
+| Platform | Backend |
+|----------|---------|
+| macOS | Keychain Services |
+| Windows | Windows Credential Manager |
+| Linux | Secret Service (GNOME Keyring, KWallet) |
+
+### Environment-Based Authentication
+
+For CI/CD and containerized environments:
+
+```python
+from fibonacci import SecureConfig
+import os
+
+config = SecureConfig(
+    api_key=os.environ.get("FIBONACCI_API_KEY"),
+    # Validate key is present
+    require_api_key=True
+)
+```
+
+## Secrets Management
+
+### Defining Secrets
+
+Never hardcode secrets in workflow files:
+
+```yaml
+# ❌ Bad - secrets in plain text
+nodes:
+  - id: api_call
+    type: tool
+    tool: http.request
+    inputs:
+      headers:
+        Authorization: "Bearer sk-1234567890"
+
+# ✅ Good - reference secrets
+nodes:
+  - id: api_call
+    type: tool
+    tool: http.request
+    inputs:
+      headers:
+        Authorization: "Bearer {{secrets.API_KEY}}"
+```
+
+### Setting Secrets via CLI
+
+```bash
+# Set a secret (prompts for value)
+fibonacci secret set API_KEY
+
+# Set secret for specific environment
+fibonacci secret set API_KEY --env production
+
+# List secrets (names only, never values)
+fibonacci secret list
+```
+
+### Secrets in Python
+
+```python
+from fibonacci import Workflow
+from fibonacci.security import SecretsManager
+
+# Configure secrets manager
+secrets = SecretsManager(
+    backend="vault",  # or "aws_secrets", "gcp_secrets", "azure_keyvault"
+    config={
+        "vault_addr": "https://vault.example.com",
+        "auth_method": "kubernetes"
+    }
+)
+
+workflow = Workflow(
+    name="secure-workflow",
+    secrets_manager=secrets
+)
+
+# Access secrets in code
+api_key = secrets.get("API_KEY")
+```
+
+### Secret Rotation
+
+```python
+from fibonacci.security import SecretsManager, RotationPolicy
+
+secrets = SecretsManager(
+    backend="vault",
+    rotation_policy=RotationPolicy(
+        enabled=True,
+        interval_days=30,
+        notify_before_days=7
+    )
+)
+
+# Check rotation status
+status = secrets.rotation_status("API_KEY")
+print(f"Days until rotation: {status.days_remaining}")
+```
+
+## Encryption
+
+### Data Encryption at Rest
+
+Encrypt sensitive data stored in memory:
+
+```python
+from fibonacci import Workflow, MemoryConfig
+from fibonacci.security import EncryptionConfig
+
+workflow = Workflow(
+    name="encrypted-workflow",
+    memory_config=MemoryConfig(
+        backend="redis",
+        encryption=EncryptionConfig(
+            enabled=True,
+            algorithm="AES-256-GCM",
+            key_source="keychain"  # or "env", "vault"
+        )
+    )
+)
+
+# All memory operations are now encrypted
+workflow.memory.set("sensitive_data", {"ssn": "123-45-6789"})
+```
+
+### Encryption in Transit
+
+All Fibonacci Cloud communications use TLS 1.3:
+
+```python
+from fibonacci import FibonacciClient
+
+client = FibonacciClient(
+    api_key="...",
+    # TLS is always enabled, these are additional options
+    tls_config={
+        "verify_certificates": True,
+        "min_version": "1.3",
+        "client_cert": "/path/to/cert.pem",  # mTLS
+        "client_key": "/path/to/key.pem"
+    }
+)
+```
+
+### Field-Level Encryption
+
+Encrypt specific fields in workflow data:
+
+```python
+from fibonacci import LLMNode
+from fibonacci.security import encrypt_field, decrypt_field
+
+# Encrypt sensitive input before processing
+encrypted_data = encrypt_field(
+    data=user_pii,
+    fields=["ssn", "credit_card"],
+    key_id="pii-encryption-key"
+)
+
+# Decrypt when needed
+decrypted = decrypt_field(
+    data=encrypted_data,
+    fields=["ssn"],
+    key_id="pii-encryption-key"
+)
+```
+
+## Access Control
+
+### Role-Based Access Control (RBAC)
+
+Define roles and permissions for workflows:
+
+```python
+from fibonacci import Workflow
+from fibonacci.security import AccessControl, Role
+
+# Define roles
+admin_role = Role(
+    name="admin",
+    permissions=["read", "write", "execute", "delete", "admin"]
+)
+
+developer_role = Role(
+    name="developer",
+    permissions=["read", "write", "execute"]
+)
+
+viewer_role = Role(
+    name="viewer",
+    permissions=["read"]
+)
+
+workflow = Workflow(
+    name="access-controlled",
+    access_control=AccessControl(
+        enabled=True,
+        default_role="viewer",
+        roles=[admin_role, developer_role, viewer_role]
+    )
+)
+```
+
+### Resource-Level Permissions
+
+```yaml
+# fibonacci.yaml
+access_control:
+  enabled: true
+  
+  resources:
+    workflows:
+      "production/*":
+        execute:
+          - role: admin
+          - role: production-deployer
+        write:
+          - role: admin
+          
+      "development/*":
+        execute:
+          - role: developer
+          - role: admin
+        write:
+          - role: developer
+          - role: admin
+          
+    secrets:
+      "*":
+        read:
+          - role: admin
+        write:
+          - role: admin
+```
+
+### API Key Scopes
+
+Create scoped API keys with limited permissions:
+
+```bash
+# Create read-only key
+fibonacci auth create-key --name "monitoring" --scope read
+
+# Create execution-only key
+fibonacci auth create-key --name "ci-cd" --scope execute
+
+# Create key with specific workflow access
+fibonacci auth create-key --name "production" \
+  --scope execute \
+  --workflows "production/*"
+```
+
+## Audit Logging
+
+### Enable Audit Logs
+
+```python
+from fibonacci import Workflow
+from fibonacci.security import AuditLogger
+
+audit = AuditLogger(
+    enabled=True,
+    destination="cloudwatch",  # or "file", "splunk", "datadog"
+    config={
+        "log_group": "/fibonacci/audit",
+        "log_stream": "workflows"
+    }
+)
+
+workflow = Workflow(
+    name="audited-workflow",
+    audit_logger=audit
+)
+```
+
+### Audit Log Contents
+
+Audit logs capture:
+
+```json
+{
+  "timestamp": "2025-01-23T10:30:00Z",
+  "event_type": "workflow.execute",
+  "workflow_id": "customer-support",
+  "user_id": "user-123",
+  "ip_address": "192.168.1.100",
+  "action": "execute",
+  "status": "success",
+  "duration_ms": 1523,
+  "metadata": {
+    "input_hash": "abc123",
+    "nodes_executed": ["classifier", "responder"],
+    "api_key_id": "key-456"
+  }
+}
+```
+
+### Query Audit Logs
+
+```bash
+# View recent audit events
+fibonacci audit logs --since "1 hour ago"
+
+# Filter by workflow
+fibonacci audit logs --workflow production-pipeline
+
+# Filter by user
+fibonacci audit logs --user user-123
+
+# Export for analysis
+fibonacci audit export --format json --output audit.json
+```
+
+## Input Validation and Sanitization
+
+### Schema Validation
+
+```python
+from fibonacci import Workflow
+
+workflow = Workflow(
+    name="validated-workflow",
+    input_schema={
+        "type": "object",
+        "required": ["user_input"],
+        "properties": {
+            "user_input": {
+                "type": "string",
+                "maxLength": 10000,
+                "pattern": "^[a-zA-Z0-9\\s.,!?-]*$"
+            },
+            "email": {
+                "type": "string",
+                "format": "email"
+            }
+        },
+        "additionalProperties": False
+    }
+)
+```
+
+### Prompt Injection Prevention
+
+```python
+from fibonacci import LLMNode
+from fibonacci.security import sanitize_input
+
+# Sanitize user input before including in prompts
+sanitized = sanitize_input(
+    user_input,
+    rules=[
+        "escape_xml",
+        "remove_system_prompts",
+        "limit_length"
+    ]
+)
+
+node = LLMNode(
+    id="analyzer",
+    model="claude-sonnet-4-5-20250929",
+    prompt=f"""Analyze this text:
+<user_input>
+{sanitized}
+</user_input>
+
+Provide sentiment analysis.""",
+    # Additional safeguards
+    prompt_injection_detection=True
+)
+```
+
+### Output Filtering
+
+```python
+from fibonacci import Workflow
+from fibonacci.security import OutputFilter
+
+workflow = Workflow(
+    name="filtered-workflow",
+    output_filter=OutputFilter(
+        rules=[
+            {"type": "pii", "action": "redact"},  # Redact PII
+            {"type": "secrets", "action": "block"},  # Block secret patterns
+            {"type": "code", "action": "sandbox"}  # Sandbox code output
+        ]
+    )
+)
+```
+
+## Network Security
+
+### IP Allowlisting
+
+```yaml
+# fibonacci.yaml
+security:
+  network:
+    ip_allowlist:
+      - 10.0.0.0/8
+      - 192.168.1.0/24
+      - 203.0.113.50
+    
+    ip_blocklist:
+      - 0.0.0.0/0  # Block all except allowlist
+```
+
+### VPC Configuration
+
+```python
+from fibonacci import FibonacciClient
+
+client = FibonacciClient(
+    api_key="...",
+    vpc_config={
+        "vpc_id": "vpc-12345",
+        "subnet_ids": ["subnet-a", "subnet-b"],
+        "security_group_ids": ["sg-12345"]
+    }
+)
+```
+
+## Security Checklist
+
+<AccordionGroup>
+  <Accordion title="Authentication">
+    - [ ] API keys stored in keychain or secrets manager
+    - [ ] No hardcoded credentials in code or YAML
+    - [ ] API key rotation policy in place
+    - [ ] Scoped API keys for different environments
+  </Accordion>
+
+  <Accordion title="Data Protection">
+    - [ ] Encryption at rest enabled for sensitive data
+    - [ ] TLS 1.3 for all communications
+    - [ ] PII handling compliant with regulations
+    - [ ] Data retention policies defined
+  </Accordion>
+
+  <Accordion title="Access Control">
+    - [ ] RBAC configured with least privilege
+    - [ ] Resource-level permissions defined
+    - [ ] Regular access reviews scheduled
+    - [ ] Service accounts properly scoped
+  </Accordion>
+
+  <Accordion title="Monitoring">
+    - [ ] Audit logging enabled
+    - [ ] Security alerts configured
+    - [ ] Anomaly detection active
+    - [ ] Regular security assessments
+  </Accordion>
+
+  <Accordion title="Input/Output">
+    - [ ] Input validation schemas defined
+    - [ ] Prompt injection protection enabled
+    - [ ] Output filtering configured
+    - [ ] Rate limiting implemented
+  </Accordion>
+</AccordionGroup>
+
+## Compliance
+
+### GDPR Compliance
+
+```python
+from fibonacci import Workflow
+from fibonacci.compliance import GDPRConfig
+
+workflow = Workflow(
+    name="gdpr-compliant",
+    compliance=GDPRConfig(
+        data_retention_days=90,
+        enable_right_to_erasure=True,
+        enable_data_portability=True,
+        consent_tracking=True
+    )
+)
+```
+
+### SOC 2 Compliance
+
+Fibonacci Cloud is SOC 2 Type II certified. Enable additional controls:
+
+```yaml
+# fibonacci.yaml
+compliance:
+  soc2:
+    enabled: true
+    controls:
+      - access_logging
+      - encryption_at_rest
+      - encryption_in_transit
+      - vulnerability_scanning
+      - incident_response
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Production workflow patterns
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle failures gracefully
+  </Card>
+</CardGroup>

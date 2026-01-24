@@ -1,0 +1,129 @@
+---
+title: 'SDK Reference'
+description: 'Complete API reference for the Fibonacci Python SDK'
+---
+
+The Fibonacci SDK provides a comprehensive Python API for building, executing, and managing AI workflows. This reference documents all public classes, methods, and configuration options.
+
+## Installation
+
+```bash
+pip install fibonacci-sdk
+```
+
+## Quick Links
+
+<CardGroup cols={2}>
+  <Card title="Workflow" icon="diagram-project" href="/sdk-reference/workflow">
+    Core workflow class for building and executing pipelines
+  </Card>
+  <Card title="FibonacciClient" icon="plug" href="/sdk-reference/client">
+    Client for interacting with Fibonacci Cloud
+  </Card>
+  <Card title="LLMNode" icon="brain" href="/sdk-reference/llm-node">
+    Node for AI model interactions
+  </Card>
+  <Card title="ToolNode" icon="wrench" href="/sdk-reference/tool-node">
+    Node for external tool integrations
+  </Card>
+  <Card title="CriticNode" icon="magnifying-glass" href="/sdk-reference/critic-node">
+    Node for quality evaluation and iteration
+  </Card>
+  <Card title="ConditionalNode" icon="code-branch" href="/sdk-reference/conditional-node">
+    Node for conditional branching logic
+  </Card>
+</CardGroup>
+
+## Core Classes
+
+| Class | Description |
+|-------|-------------|
+| [`Workflow`](/sdk-reference/workflow) | Main class for defining and executing workflows |
+| [`FibonacciClient`](/sdk-reference/client) | Client for Fibonacci Cloud API |
+| [`LLMNode`](/sdk-reference/llm-node) | Node for LLM model calls |
+| [`ToolNode`](/sdk-reference/tool-node) | Node for tool integrations |
+| [`CriticNode`](/sdk-reference/critic-node) | Node for output evaluation |
+| [`ConditionalNode`](/sdk-reference/conditional-node) | Node for branching logic |
+
+## Configuration Classes
+
+| Class | Description |
+|-------|-------------|
+| [`MemoryConfig`](/sdk-reference/memory) | Memory backend configuration |
+| [`RetryConfig`](/sdk-reference/config#retryconfig) | Retry behavior settings |
+| [`SecureConfig`](/sdk-reference/secure-config) | Security configuration |
+| [`KeychainStorage`](/sdk-reference/keychain-storage) | Secure credential storage |
+
+## Exceptions
+
+| Exception | Description |
+|-----------|-------------|
+| [`FibonacciError`](/sdk-reference/exceptions#fibonaccierror) | Base exception class |
+| [`WorkflowError`](/sdk-reference/exceptions#workflowerror) | Workflow-level errors |
+| [`NodeExecutionError`](/sdk-reference/exceptions#nodeexecutionerror) | Node execution failures |
+| [`ValidationError`](/sdk-reference/exceptions#validationerror) | Input/output validation errors |
+| [`TimeoutError`](/sdk-reference/exceptions#timeouterror) | Execution timeout errors |
+
+## Basic Example
+
+```python
+from fibonacci import Workflow, LLMNode
+
+# Create workflow
+workflow = Workflow(name="example")
+
+# Add node
+analyzer = LLMNode(
+    id="analyzer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Analyze: {{input.text}}"
+)
+workflow.add_node(analyzer)
+
+# Execute
+result = workflow.execute(inputs={"text": "Hello world"})
+print(result["analyzer"])
+```
+
+## Async Support
+
+All workflow operations support async/await:
+
+```python
+import asyncio
+from fibonacci import Workflow
+
+async def main():
+    workflow = Workflow.from_yaml("workflow.yaml")
+    result = await workflow.execute_async(inputs={"text": "Hello"})
+    print(result)
+
+asyncio.run(main())
+```
+
+## Type Hints
+
+The SDK is fully typed for IDE support:
+
+```python
+from fibonacci import Workflow, LLMNode
+from fibonacci.types import WorkflowResult, NodeOutput
+
+workflow: Workflow = Workflow(name="typed")
+result: WorkflowResult = workflow.execute(inputs={})
+```
+
+## Versioning
+
+The SDK follows [semantic versioning](https://semver.org/):
+
+- **Major**: Breaking changes to public API
+- **Minor**: New features, backwards compatible
+- **Patch**: Bug fixes, backwards compatible
+
+Check your installed version:
+
+```python
+import fibonacci
+print(fibonacci.__version__)
+```

@@ -1,0 +1,361 @@
+---
+title: 'CriticNode'
+description: 'Node for quality evaluation and iterative improvement'
+---
+
+The `CriticNode` class evaluates outputs from other nodes against specified criteria and can trigger iterative refinement until quality thresholds are met.
+
+## Constructor
+
+```python
+from fibonacci import CriticNode
+
+node = CriticNode(
+    id="quality_check",
+    model="claude-sonnet-4-5-20250929",
+    target_node="writer",
+    criteria=[
+        "Content is factually accurate",
+        "Tone is professional",
+        "Length is appropriate"
+    ],
+    min_score=7
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `id` | `str` | Required | Unique node identifier |
+| `model` | `str` | Required | Model for evaluation |
+| `target_node` | `str` | Required | ID of node to evaluate |
+| `criteria` | `list[str]` | Required | Evaluation criteria |
+| `min_score` | `int` | `7` | Minimum passing score (1-10) |
+| `max_iterations` | `int` | `3` | Maximum refinement iterations |
+| `improvement_prompt` | `str` | `None` | Prompt for improvement suggestions |
+| `dependencies` | `list[str]` | `[]` | Additional dependencies |
+| `timeout` | `int` | `None` | Execution timeout |
+
+## Basic Usage
+
+### Simple Quality Check
+
+```python
+from fibonacci import Workflow, LLMNode, CriticNode
+
+workflow = Workflow(name="quality-assured")
+
+# Content generator
+writer = LLMNode(
+    id="writer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Write an email about: {{input.topic}}"
+)
+
+# Quality evaluator
+critic = CriticNode(
+    id="critic",
+    model="claude-sonnet-4-5-20250929",
+    target_node="writer",
+    criteria=[
+        "Professional tone throughout",
+        "Clear and concise language",
+        "Proper grammar and spelling",
+        "Includes appropriate greeting and closing"
+    ],
+    min_score=8
+)
+
+workflow.add_node(writer)
+workflow.add_node(critic)
+```
+
+## Evaluation Output
+
+The CriticNode returns detailed evaluation results:
+
+```python
+result = workflow.execute(inputs={"topic": "project update"})
+
+print(result["critic"])
+# {
+#     "passed": True,
+#     "overall_score": 8.5,
+#     "criteria_scores": {
+#         "Professional tone throughout": 9,
+#         "Clear and concise language": 8,
+#         "Proper grammar and spelling": 9,
+#         "Includes appropriate greeting and closing": 8
+#     },
+#     "feedback": "The email is professional and well-structured...",
+#     "iterations": 1,
+#     "final_output": "Dear Team,\n\n..."
+# }
+```
+
+## Iterative Improvement
+
+### Automatic Refinement
+
+When output doesn't meet criteria, CriticNode can trigger refinement:
+
+```python
+critic = CriticNode(
+    id="critic",
+    model="claude-sonnet-4-5-20250929",
+    target_node="writer",
+    criteria=[
+        "Engaging opening hook",
+        "Clear value proposition",
+        "Strong call to action"
+    ],
+    min_score=8,
+    max_iterations=3,  # Try up to 3 refinements
+    improvement_prompt="""
+    Improve the content based on this feedback:
+    {{feedback}}
+    
+    Original content:
+    {{writer}}
+    
+    Focus on addressing the low-scoring criteria.
+    """
+)
+```
+
+### Iteration Flow
+
+1. Evaluate target node output
+2. If score ≥ min_score: Pass
+3. If score < min_score and iterations < max_iterations:
+   - Generate improvement feedback
+   - Re-execute target node with feedback
+   - Evaluate again
+4. If max_iterations reached: Return best attempt
+
+## Custom Improvement Prompts
+
+```python
+critic = CriticNode(
+    id="code_reviewer",
+    model="claude-sonnet-4-5-20250929",
+    target_node="coder",
+    criteria=[
+        "Code is syntactically correct",
+        "Follows best practices",
+        "Includes error handling",
+        "Is well-documented"
+    ],
+    min_score=8,
+    max_iterations=3,
+    improvement_prompt="""
+    Improve the code based on this review:
+    
+    **Feedback:**
+    {{feedback}}
+    
+    **Criteria Scores:**
+    {{criteria_scores}}
+    
+    **Original Code:**
+    ```
+    {{coder}}
+    ```
+    
+    Focus on the lowest-scoring criteria. Return only the improved code.
+    """
+)
+```
+
+## Criteria Best Practices
+
+### Good Criteria
+
+```python
+criteria = [
+    "Response directly addresses the user's question",
+    "Information is accurate and verifiable",
+    "Tone is appropriate for the target audience",
+    "Response is complete but not overly verbose",
+    "Technical terms are explained when used"
+]
+```
+
+### Measurable Criteria
+
+```python
+criteria = [
+    "Response is between 100-200 words",
+    "Includes at least 3 specific examples",
+    "Contains no grammatical errors",
+    "All claims are supported by evidence",
+    "Follows the requested format exactly"
+]
+```
+
+## Multi-Criteria Evaluation
+
+### Weighted Criteria
+
+```python
+critic = CriticNode(
+    id="weighted_critic",
+    model="claude-sonnet-4-5-20250929",
+    target_node="writer",
+    criteria=[
+        {"criterion": "Factual accuracy", "weight": 3},
+        {"criterion": "Writing quality", "weight": 2},
+        {"criterion": "Engagement", "weight": 1}
+    ],
+    min_score=7
+)
+```
+
+### Category-Based Criteria
+
+```python
+critic = CriticNode(
+    id="comprehensive_critic",
+    model="claude-sonnet-4-5-20250929",
+    target_node="article",
+    criteria=[
+        # Content quality
+        "Information is accurate and well-researched",
+        "Arguments are logical and well-supported",
+        "Topic is covered comprehensively",
+        
+        # Writing quality
+        "Grammar and spelling are correct",
+        "Sentences flow smoothly",
+        "Vocabulary is appropriate",
+        
+        # Structure
+        "Has clear introduction",
+        "Body is well-organized",
+        "Conclusion summarizes key points"
+    ],
+    min_score=7
+)
+```
+
+## Conditional Criticism
+
+Only evaluate under certain conditions:
+
+```python
+critic = CriticNode(
+    id="conditional_critic",
+    model="claude-sonnet-4-5-20250929",
+    target_node="writer",
+    criteria=["Professional quality"],
+    min_score=8,
+    condition={
+        "field": "{{input.require_review}}",
+        "operator": "equals",
+        "value": True
+    }
+)
+```
+
+## Accessing Evaluation Details
+
+```python
+result = workflow.execute(inputs=data)
+
+evaluation = result["critic"]
+
+# Check if passed
+if evaluation["passed"]:
+    print("Quality check passed!")
+    final_content = evaluation["final_output"]
+else:
+    print(f"Failed after {evaluation['iterations']} iterations")
+    print(f"Best score: {evaluation['overall_score']}")
+
+# Review individual criteria
+for criterion, score in evaluation["criteria_scores"].items():
+    status = "✓" if score >= 7 else "✗"
+    print(f"{status} {criterion}: {score}/10")
+
+# Get improvement feedback
+if not evaluation["passed"]:
+    print(f"Feedback: {evaluation['feedback']}")
+```
+
+## Complete Example
+
+```python
+from fibonacci import Workflow, LLMNode, CriticNode
+
+workflow = Workflow(name="blog-writer")
+
+# Generate blog post
+writer = LLMNode(
+    id="writer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""Write a blog post about {{input.topic}}.
+    
+    Target audience: {{input.audience}}
+    Desired length: {{input.length}} words
+    Tone: {{input.tone}}
+    """
+)
+
+# Quality assurance
+critic = CriticNode(
+    id="quality_assurance",
+    model="claude-opus-4-5-20251101",  # Use best model for evaluation
+    target_node="writer",
+    criteria=[
+        "Content is engaging from the first paragraph",
+        "Information is accurate and well-researched",
+        "Writing style matches the target audience",
+        "Post is close to the requested length",
+        "Tone is consistent throughout",
+        "Includes actionable takeaways",
+        "Has a compelling conclusion"
+    ],
+    min_score=8,
+    max_iterations=3,
+    improvement_prompt="""
+    Improve this blog post based on the editorial feedback:
+    
+    **Editorial Feedback:**
+    {{feedback}}
+    
+    **Scores by Criterion:**
+    {{criteria_scores}}
+    
+    **Current Draft:**
+    {{writer}}
+    
+    **Requirements:**
+    - Topic: {{input.topic}}
+    - Audience: {{input.audience}}
+    - Length: {{input.length}} words
+    - Tone: {{input.tone}}
+    
+    Revise the post to address the feedback while maintaining the requirements.
+    """
+)
+
+workflow.add_node(writer)
+workflow.add_node(critic)
+
+# Execute
+result = workflow.execute(inputs={
+    "topic": "Introduction to Machine Learning",
+    "audience": "business professionals",
+    "length": 800,
+    "tone": "informative yet approachable"
+})
+
+# Output
+if result["quality_assurance"]["passed"]:
+    print("Final blog post:")
+    print(result["quality_assurance"]["final_output"])
+else:
+    print("Could not achieve quality threshold")
+    print(f"Best score: {result['quality_assurance']['overall_score']}")
+```

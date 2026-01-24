@@ -1,0 +1,487 @@
+---
+title: 'Command Line Interface'
+description: 'Use the Fibonacci CLI for workflow management, execution, and development'
+---
+
+The Fibonacci CLI provides powerful commands for managing workflows, executing them locally or remotely, and streamlining development workflows.
+
+## Installation
+
+The CLI is included with the Fibonacci SDK:
+
+```bash
+pip install fibonacci-sdk
+```
+
+Verify installation:
+
+```bash
+fibonacci --version
+```
+
+## Quick Reference
+
+| Command | Description |
+|---------|-------------|
+| `fibonacci init` | Initialize a new project |
+| `fibonacci run` | Execute a workflow |
+| `fibonacci validate` | Validate workflow files |
+| `fibonacci deploy` | Deploy to Fibonacci Cloud |
+| `fibonacci logs` | View execution logs |
+| `fibonacci tools` | Manage tool integrations |
+
+## Commands
+
+### `fibonacci init`
+
+Initialize a new Fibonacci project:
+
+```bash
+# Interactive setup
+fibonacci init
+
+# With project name
+fibonacci init my-project
+
+# From template
+fibonacci init --template chatbot
+fibonacci init --template data-pipeline
+fibonacci init --template api-integration
+```
+
+This creates:
+```
+my-project/
+├── fibonacci.yaml      # Project configuration
+├── workflows/          # Workflow definitions
+│   └── example.yaml
+├── .env.example        # Environment template
+└── README.md
+```
+
+### `fibonacci run`
+
+Execute workflows locally or remotely:
+
+```bash
+# Run a Python workflow
+fibonacci run workflow.py
+
+# Run a YAML workflow
+fibonacci run workflows/analyzer.yaml
+
+# With input data
+fibonacci run workflow.py --input '{"text": "Hello world"}'
+
+# From input file
+fibonacci run workflow.py --input-file data.json
+
+# Run remotely on Fibonacci Cloud
+fibonacci run workflow.py --remote
+
+# With specific environment
+fibonacci run workflow.py --env production
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--input, -i` | JSON input data |
+| `--input-file, -f` | Path to JSON input file |
+| `--remote, -r` | Execute on Fibonacci Cloud |
+| `--env, -e` | Environment (dev/staging/production) |
+| `--timeout, -t` | Execution timeout in seconds |
+| `--verbose, -v` | Verbose output |
+| `--dry-run` | Validate without executing |
+
+### `fibonacci validate`
+
+Validate workflow syntax and configuration:
+
+```bash
+# Validate a single file
+fibonacci validate workflow.yaml
+
+# Validate all workflows in directory
+fibonacci validate workflows/
+
+# Verbose validation with suggestions
+fibonacci validate workflow.yaml --verbose
+
+# Strict mode (treat warnings as errors)
+fibonacci validate workflow.yaml --strict
+```
+
+**Output example:**
+
+```
+✓ workflow.yaml
+  ✓ Schema validation passed
+  ✓ Node dependencies valid
+  ✓ Tool references valid
+  ⚠ Warning: Node 'analyzer' has no description
+
+Validated 1 file with 0 errors, 1 warning
+```
+
+### `fibonacci deploy`
+
+Deploy workflows to Fibonacci Cloud:
+
+```bash
+# Deploy all workflows
+fibonacci deploy
+
+# Deploy specific workflow
+fibonacci deploy workflows/production.yaml
+
+# Deploy to specific environment
+fibonacci deploy --env staging
+
+# Deploy with version tag
+fibonacci deploy --version v1.2.0
+
+# Preview changes without deploying
+fibonacci deploy --dry-run
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--env, -e` | Target environment |
+| `--version, -v` | Version tag |
+| `--dry-run` | Preview without deploying |
+| `--force` | Skip confirmation prompts |
+| `--message, -m` | Deployment message |
+
+### `fibonacci logs`
+
+View execution logs:
+
+```bash
+# View recent logs
+fibonacci logs
+
+# Follow logs in real-time
+fibonacci logs --follow
+
+# Filter by workflow
+fibonacci logs --workflow customer-support
+
+# Filter by time range
+fibonacci logs --since "1 hour ago"
+fibonacci logs --since "2025-01-15T10:00:00"
+
+# Filter by status
+fibonacci logs --status failed
+
+# View specific execution
+fibonacci logs --execution-id abc123
+```
+
+**Options:**
+
+| Option | Description |
+|--------|-------------|
+| `--follow, -f` | Stream logs in real-time |
+| `--workflow, -w` | Filter by workflow name |
+| `--since, -s` | Show logs since time |
+| `--until, -u` | Show logs until time |
+| `--status` | Filter by status (success/failed/running) |
+| `--limit, -n` | Number of log entries |
+| `--format` | Output format (text/json) |
+
+### `fibonacci tools`
+
+Manage tool integrations:
+
+```bash
+# List available tools
+fibonacci tools list
+
+# Search for tools
+fibonacci tools search "google sheets"
+
+# Get tool details
+fibonacci tools info google_sheets.read_range
+
+# Connect a tool
+fibonacci tools connect google
+fibonacci tools connect slack
+fibonacci tools connect salesforce
+
+# List connected tools
+fibonacci tools connected
+
+# Disconnect a tool
+fibonacci tools disconnect google
+```
+
+### `fibonacci auth`
+
+Manage authentication:
+
+```bash
+# Login to Fibonacci Cloud
+fibonacci auth login
+
+# Login with API key
+fibonacci auth login --api-key YOUR_KEY
+
+# Check authentication status
+fibonacci auth status
+
+# Logout
+fibonacci auth logout
+
+# Switch organization
+fibonacci auth org switch my-org
+```
+
+### `fibonacci config`
+
+Manage configuration:
+
+```bash
+# View current config
+fibonacci config list
+
+# Set a config value
+fibonacci config set default_model claude-sonnet-4-5-20250929
+
+# Get a config value
+fibonacci config get default_model
+
+# Reset to defaults
+fibonacci config reset
+
+# Edit config file
+fibonacci config edit
+```
+
+**Common configuration options:**
+
+| Key | Description | Default |
+|-----|-------------|---------|
+| `default_model` | Default LLM model | `claude-sonnet-4-5-20250929` |
+| `default_env` | Default environment | `development` |
+| `log_level` | CLI log verbosity | `info` |
+| `output_format` | Default output format | `text` |
+
+### `fibonacci secret`
+
+Manage secrets:
+
+```bash
+# Set a secret
+fibonacci secret set API_KEY
+
+# Set from value (not recommended for sensitive data)
+fibonacci secret set API_KEY --value "sk-..."
+
+# List secrets (names only)
+fibonacci secret list
+
+# Delete a secret
+fibonacci secret delete API_KEY
+
+# Sync secrets to environment
+fibonacci secret sync --env production
+```
+
+## Project Configuration
+
+The `fibonacci.yaml` file configures your project:
+
+```yaml
+# fibonacci.yaml
+name: my-project
+version: "1.0.0"
+
+# Default settings
+defaults:
+  model: claude-sonnet-4-5-20250929
+  timeout: 60
+  retry:
+    max_attempts: 3
+    delay: 1.0
+
+# Environments
+environments:
+  development:
+    api_url: http://localhost:8000
+    log_level: debug
+    
+  staging:
+    api_url: https://staging-api.fibonacci.dev
+    log_level: info
+    
+  production:
+    api_url: https://api.fibonacci.dev
+    log_level: warning
+
+# Workflow locations
+workflows:
+  - workflows/*.yaml
+  - src/**/*.py
+
+# Tool configurations
+tools:
+  google:
+    credentials_file: ./credentials/google.json
+  slack:
+    default_channel: "#notifications"
+```
+
+## Environment Variables
+
+The CLI respects these environment variables:
+
+| Variable | Description |
+|----------|-------------|
+| `FIBONACCI_API_KEY` | API key for Fibonacci Cloud |
+| `FIBONACCI_ENV` | Default environment |
+| `FIBONACCI_CONFIG` | Path to config file |
+| `FIBONACCI_LOG_LEVEL` | Log verbosity |
+| `FIBONACCI_NO_COLOR` | Disable colored output |
+
+## Shell Completion
+
+Enable tab completion for your shell:
+
+```bash
+# Bash
+fibonacci completion bash >> ~/.bashrc
+
+# Zsh
+fibonacci completion zsh >> ~/.zshrc
+
+# Fish
+fibonacci completion fish > ~/.config/fish/completions/fibonacci.fish
+```
+
+## CI/CD Integration
+
+### GitHub Actions
+
+```yaml
+# .github/workflows/deploy.yaml
+name: Deploy Workflows
+
+on:
+  push:
+    branches: [main]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          
+      - name: Install Fibonacci
+        run: pip install fibonacci-sdk
+        
+      - name: Validate Workflows
+        run: fibonacci validate workflows/ --strict
+        
+      - name: Deploy
+        run: fibonacci deploy --env production
+        env:
+          FIBONACCI_API_KEY: ${{ secrets.FIBONACCI_API_KEY }}
+```
+
+### GitLab CI
+
+```yaml
+# .gitlab-ci.yml
+stages:
+  - validate
+  - deploy
+
+validate:
+  stage: validate
+  image: python:3.11
+  script:
+    - pip install fibonacci-sdk
+    - fibonacci validate workflows/ --strict
+
+deploy:
+  stage: deploy
+  image: python:3.11
+  script:
+    - pip install fibonacci-sdk
+    - fibonacci deploy --env production
+  only:
+    - main
+  environment:
+    name: production
+```
+
+## Troubleshooting
+
+### Common Issues
+
+<AccordionGroup>
+  <Accordion title="Command not found">
+    Ensure Fibonacci is installed and in your PATH:
+    ```bash
+    pip install fibonacci-sdk
+    echo $PATH
+    which fibonacci
+    ```
+  </Accordion>
+
+  <Accordion title="Authentication errors">
+    Re-authenticate with Fibonacci Cloud:
+    ```bash
+    fibonacci auth logout
+    fibonacci auth login
+    ```
+  </Accordion>
+
+  <Accordion title="Validation failures">
+    Run with verbose mode for detailed errors:
+    ```bash
+    fibonacci validate workflow.yaml --verbose
+    ```
+  </Accordion>
+
+  <Accordion title="Slow execution">
+    Check network connectivity and consider running locally:
+    ```bash
+    fibonacci run workflow.py  # Local execution
+    ```
+  </Accordion>
+</AccordionGroup>
+
+### Debug Mode
+
+Enable debug output:
+
+```bash
+FIBONACCI_LOG_LEVEL=debug fibonacci run workflow.py
+```
+
+Or in the command:
+
+```bash
+fibonacci --debug run workflow.py
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="YAML Workflows" icon="file-code" href="/guides/yaml-workflows">
+    Define workflows in YAML
+  </Card>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Production deployment patterns
+  </Card>
+</CardGroup>

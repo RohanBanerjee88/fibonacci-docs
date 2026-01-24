@@ -1,0 +1,432 @@
+---
+title: "Conditional Logic"
+description: "Build dynamic workflows with branching and conditions"
+---
+
+Conditional logic lets you create workflows that adapt based on data, making them more intelligent and flexible.
+
+## ConditionalNode Basics
+
+```python
+from fibonacci import ConditionalNode
+
+condition = ConditionalNode(
+    id="check_status",
+    name="Check Status",
+    left_value="{{previous_node}}",    # Value to check
+    operator="equals",                  # How to compare
+    right_value="success",              # Compare against
+    true_branch=["success_path"],       # Run if true
+    false_branch=["error_path"]         # Run if false
+)
+```
+
+## Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `equals` | Exact match | `"completed"` = `"completed"` ✓ |
+| `not_equals` | Not equal | `"pending"` ≠ `"completed"` ✓ |
+| `contains` | Substring | `"error in line 5"` contains `"error"` ✓ |
+| `not_contains` | No substring | `"success"` not_contains `"error"` ✓ |
+| `greater_than` | Numeric > | `100` > `50` ✓ |
+| `less_than` | Numeric < | `25` < `50` ✓ |
+| `starts_with` | Prefix match | `"error: msg"` starts_with `"error"` ✓ |
+| `ends_with` | Suffix match | `"file.pdf"` ends_with `".pdf"` ✓ |
+| `is_empty` | Empty/null | `""` is_empty ✓ |
+| `is_not_empty` | Has value | `"text"` is_not_empty ✓ |
+
+---
+
+## Example: Sentiment-Based Routing
+
+Route messages based on detected sentiment:
+
+```python
+from fibonacci import Workflow, LLMNode, ToolNode, ConditionalNode
+
+wf = Workflow(name="Customer Feedback Router")
+
+# Step 1: Analyze sentiment
+analyze = LLMNode(
+    id="analyze_sentiment",
+    name="Analyze Sentiment",
+    instruction="""
+    Analyze the sentiment of this feedback.
+    Respond with exactly one word: positive, negative, or neutral
+    
+    Feedback: {{input.feedback}}
+    """
+)
+
+# Step 2: Check if negative
+check_negative = ConditionalNode(
+    id="check_negative",
+    name="Is Negative?",
+    left_value="{{analyze_sentiment}}",
+    operator="contains",
+    right_value="negative",
+    true_branch=["escalate_to_support"],
+    false_branch=["log_feedback"],
+    dependencies=["analyze_sentiment"]
+)
+
+# Step 3a: Escalate negative feedback
+escalate = ToolNode(
+    id="escalate_to_support",
+    name="Escalate to Support",
+    tool="slack_send_message",
+    params={
+        "channel": "#customer-support",
+        "message": "⚠️ Negative feedback received!\n\n{{input.feedback}}"
+    },
+    dependencies=["check_negative"]
+)
+
+# Step 3b: Just log positive/neutral feedback
+log = ToolNode(
+    id="log_feedback",
+    name="Log Feedback",
+    tool="google_sheets_append",
+    params={
+        "spreadsheet_id": "{{input.log_sheet}}",
+        "range": "Feedback!A:C",
+        "values": [["{{timestamp}}", "{{analyze_sentiment}}", "{{input.feedback}}"]]
+    },
+    dependencies=["check_negative"]
+)
+
+wf.add_nodes([analyze, check_negative, escalate, log])
+```
+
+---
+
+## Example: Score-Based Branching
+
+Different actions based on a quality score:
+
+```python
+# Evaluate content quality
+evaluate = LLMNode(
+    id="evaluate",
+    name="Evaluate Quality",
+    instruction="""
+    Rate this content on a scale of 1-10.
+    Respond with ONLY a number.
+    
+    Content: {{generate_content}}
+    """
+)
+
+# Check if high quality (score > 7)
+check_quality = ConditionalNode(
+    id="check_quality",
+    name="Quality Check",
+    left_value="{{evaluate}}",
+    operator="greater_than",
+    right_value="7",
+    true_branch=["publish"],
+    false_branch=["request_revision"],
+    dependencies=["evaluate"]
+)
+
+# Publish if good
+publish = ToolNode(
+    id="publish",
+    name="Publish Content",
+    tool="wordpress_publish",
+    params={"content": "{{generate_content}}"},
+    dependencies=["check_quality"]
+)
+
+# Request revision if not good enough
+revision = LLMNode(
+    id="request_revision",
+    name="Request Revision",
+    instruction="""
+    This content scored {{evaluate}}/10. Please improve it:
+    
+    {{generate_content}}
+    """,
+    dependencies=["check_quality"]
+)
+```
+
+---
+
+## Multiple Conditions (Chaining)
+
+Chain conditions for complex logic:
+
+```python
+# First check: Is it urgent?
+check_urgent = ConditionalNode(
+    id="check_urgent",
+    name="Check Urgency",
+    left_value="{{input.priority}}",
+    operator="equals",
+    right_value="urgent",
+    true_branch=["immediate_action"],
+    false_branch=["check_important"]  # Chain to next check
+)
+
+# Second check: Is it important?
+check_important = ConditionalNode(
+    id="check_important",
+    name="Check Importance",
+    left_value="{{input.priority}}",
+    operator="equals",
+    right_value="important",
+    true_branch=["schedule_soon"],
+    false_branch=["add_to_backlog"],
+    dependencies=["check_urgent"]
+)
+```
+
+This creates a decision tree:
+```
+                    [Check Urgent?]
+                     /           \
+                   Yes            No
+                   /               \
+        [Immediate Action]    [Check Important?]
+                               /            \
+                             Yes             No
+                             /               \
+                    [Schedule Soon]    [Add to Backlog]
+```
+
+---
+
+## Conditional Node Execution
+
+Any node can have a condition that controls whether it runs:
+
+```python
+# Only send email if user opted in
+send_email = ToolNode(
+    id="send_email",
+    name="Send Email",
+    tool="gmail_send",
+    params={...}
+).with_condition(
+    left_value="{{input.email_opt_in}}",
+    operator="equals",
+    right_value="true"
+)
+
+# Only run expensive analysis if data is large
+deep_analysis = LLMNode(
+    id="deep_analysis",
+    name="Deep Analysis",
+    instruction="...",
+    model="claude-opus-4-5-20251101"  # Expensive model
+).with_condition(
+    left_value="{{input.data_size}}",
+    operator="greater_than",
+    right_value="1000"
+)
+```
+
+---
+
+## Checking for Empty Values
+
+Handle missing or empty data:
+
+```python
+# Check if we have data
+check_data = ConditionalNode(
+    id="check_data",
+    name="Has Data?",
+    left_value="{{fetch_data}}",
+    operator="is_not_empty",
+    right_value="",  # Not used for is_empty/is_not_empty
+    true_branch=["process_data"],
+    false_branch=["send_no_data_alert"]
+)
+```
+
+---
+
+## Pattern: Try-Catch Style
+
+Handle potential failures gracefully:
+
+```python
+# Attempt API call
+api_call = ToolNode(
+    id="api_call",
+    name="Call API",
+    tool="http_request",
+    params={...}
+).with_retry(max_retries=2)
+
+# Check for error in response
+check_error = ConditionalNode(
+    id="check_error",
+    name="Check for Error",
+    left_value="{{api_call}}",
+    operator="contains",
+    right_value="error",
+    true_branch=["handle_error"],
+    false_branch=["continue_processing"],
+    dependencies=["api_call"]
+)
+
+# Error handling path
+handle_error = LLMNode(
+    id="handle_error",
+    name="Handle Error",
+    instruction="Log and explain this error: {{api_call}}",
+    dependencies=["check_error"]
+)
+```
+
+---
+
+## Pattern: A/B Testing
+
+Route traffic to different versions:
+
+```python
+import random
+
+# In your input data, include a random bucket
+result = wf.run(input_data={
+    "user_id": "123",
+    "ab_bucket": "A" if random.random() < 0.5 else "B"
+})
+
+# In your workflow:
+ab_check = ConditionalNode(
+    id="ab_check",
+    name="A/B Split",
+    left_value="{{input.ab_bucket}}",
+    operator="equals",
+    right_value="A",
+    true_branch=["version_a"],
+    false_branch=["version_b"]
+)
+
+version_a = LLMNode(
+    id="version_a",
+    name="Version A",
+    instruction="Generate response using approach A: ...",
+    dependencies=["ab_check"]
+)
+
+version_b = LLMNode(
+    id="version_b",
+    name="Version B",
+    instruction="Generate response using approach B: ...",
+    dependencies=["ab_check"]
+)
+```
+
+---
+
+## Pattern: Loop Until Success
+
+Retry with AI refinement:
+
+```python
+# Generate content
+generate = LLMNode(
+    id="generate",
+    name="Generate Content",
+    instruction="Write content about {{input.topic}}"
+)
+
+# Evaluate
+evaluate = LLMNode(
+    id="evaluate",
+    name="Evaluate",
+    instruction="Rate 1-10: {{generate}}. Respond with just a number.",
+    dependencies=["generate"]
+)
+
+# Check quality
+check = ConditionalNode(
+    id="check",
+    name="Good Enough?",
+    left_value="{{evaluate}}",
+    operator="greater_than",
+    right_value="8",
+    true_branch=["publish"],
+    false_branch=["refine"],
+    dependencies=["evaluate"]
+)
+
+# Refine if needed
+refine = LLMNode(
+    id="refine",
+    name="Refine",
+    instruction="Improve this (was rated {{evaluate}}/10): {{generate}}",
+    dependencies=["check"]
+)
+
+# Note: For true loops, you'd typically run the workflow multiple times
+# or use the memory system to track iterations
+```
+
+---
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Keep conditions simple">
+    ```python
+    # ✅ Good: Single, clear condition
+    left_value="{{score}}",
+    operator="greater_than",
+    right_value="7"
+    
+    # ❌ Avoid: Complex parsing in conditions
+    # Instead, use an LLM node to simplify first
+    ```
+  </Accordion>
+
+  <Accordion title="Use descriptive branch names">
+    ```python
+    # ✅ Good
+    true_branch=["send_urgent_alert", "escalate_to_manager"]
+    
+    # ❌ Bad
+    true_branch=["path1", "node_a"]
+    ```
+  </Accordion>
+
+  <Accordion title="Handle both branches">
+    ```python
+    # ✅ Good: Both branches defined
+    true_branch=["success_path"],
+    false_branch=["failure_path"]
+    
+    # ⚠️ OK but be intentional: Empty branch
+    true_branch=["action"],
+    false_branch=[]  # Explicitly nothing
+    ```
+  </Accordion>
+</AccordionGroup>
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Memory System"
+    icon="database"
+    href="/guides/memory"
+  >
+    Store state across workflow runs
+  </Card>
+  <Card
+    title="Error Handling"
+    icon="triangle-exclamation"
+    href="/guides/error-handling"
+  >
+    Handle failures gracefully
+  </Card>
+</CardGroup>

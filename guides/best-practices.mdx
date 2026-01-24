@@ -1,0 +1,693 @@
+---
+title: 'Best Practices'
+description: 'Production patterns and recommendations for building reliable Fibonacci workflows'
+---
+
+This guide covers proven patterns and recommendations for building reliable, maintainable, and scalable Fibonacci workflows in production.
+
+## Workflow Design
+
+### Keep Workflows Focused
+
+Each workflow should do one thing well:
+
+```python
+# ✅ Good - focused workflows
+customer_classifier = Workflow(name="classify-customer-inquiry")
+response_generator = Workflow(name="generate-support-response")
+escalation_handler = Workflow(name="handle-escalation")
+
+# ❌ Avoid - monolithic workflow doing everything
+support_system = Workflow(name="complete-customer-support-system")
+```
+
+### Use Meaningful Names
+
+```python
+# ✅ Good - descriptive names
+workflow = Workflow(name="quarterly-sales-report-generator")
+
+sentiment_node = LLMNode(
+    id="analyze_customer_sentiment",
+    ...
+)
+
+# ❌ Avoid - vague names
+workflow = Workflow(name="processor")
+node = LLMNode(id="node1", ...)
+```
+
+### Document Your Workflows
+
+```python
+workflow = Workflow(
+    name="customer-churn-predictor",
+    description="""
+    Analyzes customer behavior patterns to predict churn risk.
+    
+    Inputs:
+    - customer_id: Customer identifier
+    - timeframe: Analysis period (default: 90 days)
+    
+    Outputs:
+    - risk_score: 0-100 churn probability
+    - factors: Contributing factors
+    - recommendations: Retention actions
+    
+    Owner: data-science@company.com
+    Last updated: 2025-01-15
+    """
+)
+```
+
+## Node Patterns
+
+### Chain of Responsibility
+
+Break complex tasks into specialized nodes:
+
+```python
+from fibonacci import Workflow, LLMNode
+
+workflow = Workflow(name="content-pipeline")
+
+# Step 1: Generate outline
+outliner = LLMNode(
+    id="create_outline",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Create an outline for: {{input.topic}}"
+)
+
+# Step 2: Write draft
+writer = LLMNode(
+    id="write_draft",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Write content following this outline: {{create_outline}}",
+    dependencies=["create_outline"]
+)
+
+# Step 3: Edit and polish
+editor = LLMNode(
+    id="edit_content",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Edit for clarity and style: {{write_draft}}",
+    dependencies=["write_draft"]
+)
+
+# Step 4: Final review
+reviewer = LLMNode(
+    id="final_review",
+    model="claude-opus-4-5-20251101",  # Premium model for final check
+    prompt="Final quality review: {{edit_content}}",
+    dependencies=["edit_content"]
+)
+```
+
+### Parallel Processing
+
+Maximize throughput with parallel execution:
+
+```python
+workflow = Workflow(name="multi-analysis")
+
+# These run in parallel (no dependencies)
+sentiment = LLMNode(
+    id="sentiment",
+    model="claude-haiku-4-5-20251001",
+    prompt="Sentiment: {{input.text}}"
+)
+
+entities = LLMNode(
+    id="entities",
+    model="claude-haiku-4-5-20251001",
+    prompt="Extract entities: {{input.text}}"
+)
+
+summary = LLMNode(
+    id="summary",
+    model="claude-haiku-4-5-20251001",
+    prompt="Summarize: {{input.text}}"
+)
+
+# Combine results
+combine = LLMNode(
+    id="combine",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""
+    Combine these analyses:
+    Sentiment: {{sentiment}}
+    Entities: {{entities}}
+    Summary: {{summary}}
+    """,
+    dependencies=["sentiment", "entities", "summary"]
+)
+```
+
+### Critic Pattern for Quality
+
+Use CriticNode for iterative improvement:
+
+```python
+from fibonacci import LLMNode, CriticNode
+
+writer = LLMNode(
+    id="writer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Write a professional email: {{input.request}}"
+)
+
+critic = CriticNode(
+    id="quality_critic",
+    model="claude-sonnet-4-5-20250929",
+    target_node="writer",
+    criteria=[
+        "Professional tone throughout",
+        "Clear and concise language",
+        "Proper grammar and spelling",
+        "Appropriate length (not too long)",
+        "Clear call to action"
+    ],
+    min_score=8,
+    max_iterations=3,
+    improvement_prompt="""
+    Improve the email based on this feedback:
+    {{feedback}}
+    
+    Original email:
+    {{writer}}
+    """
+)
+```
+
+## Prompt Engineering
+
+### Use Clear Structure
+
+```python
+analyzer = LLMNode(
+    id="analyzer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""You are analyzing customer feedback for a software company.
+
+<context>
+Product: {{input.product_name}}
+Customer tier: {{input.customer_tier}}
+</context>
+
+<feedback>
+{{input.feedback_text}}
+</feedback>
+
+<instructions>
+1. Identify the main issue or request
+2. Assess the urgency (low/medium/high/critical)
+3. Categorize: bug, feature_request, question, complaint, praise
+4. Suggest an appropriate response approach
+</instructions>
+
+<output_format>
+Return JSON:
+{
+  "main_issue": "...",
+  "urgency": "...",
+  "category": "...",
+  "response_approach": "..."
+}
+</output_format>"""
+)
+```
+
+### Include Examples (Few-Shot)
+
+```python
+classifier = LLMNode(
+    id="intent_classifier",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""Classify the customer intent.
+
+<examples>
+Input: "I can't log into my account"
+Output: {"intent": "technical_support", "urgency": "high"}
+
+Input: "Do you offer annual billing?"
+Output: {"intent": "billing_question", "urgency": "low"}
+
+Input: "This is unacceptable, I want a refund!"
+Output: {"intent": "complaint", "urgency": "high"}
+
+Input: "Love the new feature!"
+Output: {"intent": "feedback_positive", "urgency": "low"}
+</examples>
+
+<input>
+{{input.message}}
+</input>
+
+Classify this input following the same format as the examples."""
+)
+```
+
+### Specify Output Format
+
+```python
+# Structured JSON output
+structured_node = LLMNode(
+    id="structured",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Analyze: {{input.text}}",
+    output_format="json",
+    output_schema={
+        "type": "object",
+        "required": ["sentiment", "confidence", "keywords"],
+        "properties": {
+            "sentiment": {"enum": ["positive", "negative", "neutral"]},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1},
+            "keywords": {"type": "array", "items": {"type": "string"}}
+        }
+    }
+)
+```
+
+## Error Handling
+
+### Always Set Timeouts
+
+```python
+# Node-level timeout
+node = LLMNode(
+    id="analyzer",
+    model="claude-opus-4-5-20251101",
+    prompt="...",
+    timeout=60  # 60 seconds
+)
+
+# Workflow-level timeout
+result = workflow.execute(
+    inputs=data,
+    timeout=300  # 5 minutes for entire workflow
+)
+```
+
+### Implement Graceful Degradation
+
+```python
+from fibonacci import Workflow, LLMNode
+
+workflow = Workflow(name="resilient-analysis")
+
+# Premium analysis with expensive model
+premium = LLMNode(
+    id="premium_analysis",
+    model="claude-opus-4-5-20251101",
+    prompt="Detailed analysis: {{input.text}}",
+    timeout=60,
+    on_error="standard_analysis"
+)
+
+# Standard fallback
+standard = LLMNode(
+    id="standard_analysis",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Analysis: {{input.text}}",
+    timeout=30,
+    on_error="basic_analysis"
+)
+
+# Basic fallback
+basic = LLMNode(
+    id="basic_analysis",
+    model="claude-haiku-4-5-20251001",
+    prompt="Quick analysis: {{input.text}}",
+    timeout=15
+)
+```
+
+### Use Retry with Backoff
+
+```python
+from fibonacci import ToolNode, RetryConfig
+
+api_node = ToolNode(
+    id="external_api",
+    tool="http.request",
+    inputs={"url": "https://api.example.com"},
+    retry=RetryConfig(
+        max_attempts=5,
+        delay=1.0,
+        backoff="exponential",
+        max_delay=30.0,
+        jitter=True,
+        retry_on=["timeout", "5xx", "rate_limit"]
+    )
+)
+```
+
+## Performance Optimization
+
+### Choose the Right Model
+
+| Use Case | Recommended Model |
+|----------|------------------|
+| Simple classification | claude-haiku-4-5-20251001 |
+| General tasks | claude-sonnet-4-5-20250929 |
+| Complex reasoning | claude-opus-4-5-20251101 |
+| High volume, low cost | claude-haiku-4-5-20251001 |
+
+```python
+# Use Haiku for simple, high-volume tasks
+classifier = LLMNode(
+    id="quick_classify",
+    model="claude-haiku-4-5-20251001",  # Fast and cost-effective
+    prompt="Classify as spam/not_spam: {{input.text}}"
+)
+
+# Use Opus for complex analysis
+deep_analyzer = LLMNode(
+    id="deep_analysis",
+    model="claude-opus-4-5-20251101",  # Most capable
+    prompt="Provide comprehensive analysis: {{input.text}}"
+)
+```
+
+### Optimize Token Usage
+
+```python
+# Be concise in prompts
+# ❌ Verbose
+verbose = LLMNode(
+    id="verbose",
+    prompt="""I would like you to please analyze the following text 
+    and provide me with a detailed sentiment analysis. The text is 
+    provided below for your analysis..."""
+)
+
+# ✅ Concise
+concise = LLMNode(
+    id="concise",
+    prompt="Analyze sentiment: {{input.text}}\nReturn: positive/negative/neutral"
+)
+```
+
+### Cache Expensive Operations
+
+```python
+from fibonacci import Workflow
+from fibonacci.patterns import cached
+
+workflow = Workflow(name="cached-workflow")
+
+@cached(ttl=3600)  # Cache for 1 hour
+def expensive_analysis(text: str):
+    return workflow.execute(inputs={"text": text})
+
+# Or use memory-based caching
+def get_or_compute(workflow, key: str, compute_fn):
+    cached = workflow.memory.get(f"cache:{key}", scope="organization")
+    if cached:
+        return cached
+    
+    result = compute_fn()
+    workflow.memory.set(
+        f"cache:{key}",
+        result,
+        scope="organization",
+        ttl=3600
+    )
+    return result
+```
+
+## Testing
+
+### Unit Test Nodes
+
+```python
+import pytest
+from fibonacci import LLMNode
+from fibonacci.testing import MockLLM
+
+def test_sentiment_classifier():
+    # Mock the LLM response
+    mock = MockLLM(responses={
+        "positive": '{"sentiment": "positive", "confidence": 0.95}'
+    })
+    
+    node = LLMNode(
+        id="sentiment",
+        model=mock,
+        prompt="Classify: {{input.text}}"
+    )
+    
+    result = node.execute({"text": "I love this product!"})
+    
+    assert result["sentiment"] == "positive"
+    assert result["confidence"] > 0.9
+```
+
+### Integration Test Workflows
+
+```python
+def test_support_workflow():
+    workflow = Workflow.from_yaml("workflows/support.yaml")
+    
+    # Test happy path
+    result = workflow.execute(
+        inputs={
+            "message": "How do I reset my password?",
+            "customer_id": "test-123"
+        }
+    )
+    
+    assert result["category"] == "technical_support"
+    assert "password" in result["response"].lower()
+
+def test_error_handling():
+    workflow = Workflow.from_yaml("workflows/support.yaml")
+    
+    # Test with invalid input
+    with pytest.raises(ValidationError):
+        workflow.execute(inputs={"message": ""})
+```
+
+### Use Test Fixtures
+
+```python
+import pytest
+from fibonacci import Workflow
+
+@pytest.fixture
+def sample_workflow():
+    return Workflow.from_yaml("test_fixtures/sample.yaml")
+
+@pytest.fixture
+def test_inputs():
+    return {
+        "text": "Sample text for testing",
+        "user_id": "test-user"
+    }
+
+def test_workflow_execution(sample_workflow, test_inputs):
+    result = sample_workflow.execute(inputs=test_inputs)
+    assert "output" in result
+```
+
+## Deployment
+
+### Environment Separation
+
+```yaml
+# fibonacci.yaml
+environments:
+  development:
+    model_default: claude-haiku-4-5-20251001  # Cheaper for dev
+    timeout_default: 30
+    log_level: debug
+    
+  staging:
+    model_default: claude-sonnet-4-5-20250929
+    timeout_default: 60
+    log_level: info
+    
+  production:
+    model_default: claude-sonnet-4-5-20250929
+    timeout_default: 120
+    log_level: warning
+    retry_default: 3
+```
+
+### Version Your Workflows
+
+```yaml
+name: customer-support
+version: "2.1.0"  # Semantic versioning
+changelog: |
+  2.1.0 - Added escalation handling
+  2.0.0 - Breaking: Changed output format
+  1.1.0 - Added sentiment analysis
+  1.0.0 - Initial release
+```
+
+### CI/CD Pipeline
+
+```yaml
+# .github/workflows/deploy.yaml
+name: Deploy Workflows
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install fibonacci-sdk
+      - run: fibonacci validate workflows/ --strict
+
+  test:
+    needs: validate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: pip install fibonacci-sdk pytest
+      - run: pytest tests/
+
+  deploy-staging:
+    needs: test
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install fibonacci-sdk
+      - run: fibonacci deploy --env staging
+        env:
+          FIBONACCI_API_KEY: ${{ secrets.FIBONACCI_API_KEY }}
+
+  deploy-production:
+    needs: deploy-staging
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: production
+    steps:
+      - uses: actions/checkout@v4
+      - run: pip install fibonacci-sdk
+      - run: fibonacci deploy --env production
+        env:
+          FIBONACCI_API_KEY: ${{ secrets.FIBONACCI_API_KEY_PROD }}
+```
+
+## Monitoring
+
+### Track Key Metrics
+
+```python
+from fibonacci import Workflow
+from fibonacci.metrics import MetricsCollector
+
+metrics = MetricsCollector(
+    backend="datadog",  # or "prometheus", "cloudwatch"
+    config={"api_key": "..."}
+)
+
+workflow = Workflow(
+    name="monitored-workflow",
+    metrics=metrics
+)
+
+# Tracked automatically:
+# - fibonacci.workflow.duration
+# - fibonacci.workflow.success_rate
+# - fibonacci.node.duration
+# - fibonacci.node.token_usage
+# - fibonacci.errors.count
+```
+
+### Set Up Alerts
+
+```yaml
+# alerts.yaml
+alerts:
+  - name: high-error-rate
+    condition: fibonacci.errors.count > 10
+    window: 5m
+    severity: critical
+    notify: ["pagerduty", "slack:#alerts"]
+    
+  - name: slow-response
+    condition: fibonacci.workflow.duration.p95 > 30s
+    window: 15m
+    severity: warning
+    notify: ["slack:#monitoring"]
+    
+  - name: high-token-usage
+    condition: fibonacci.node.token_usage > 100000
+    window: 1h
+    severity: info
+    notify: ["email:team@company.com"]
+```
+
+## Checklist
+
+<AccordionGroup>
+  <Accordion title="Design">
+    - [ ] Workflows are focused and single-purpose
+    - [ ] Names are descriptive and consistent
+    - [ ] Documentation is complete
+    - [ ] Dependencies are clearly defined
+  </Accordion>
+
+  <Accordion title="Reliability">
+    - [ ] Timeouts set on all nodes and workflows
+    - [ ] Retry configuration with backoff
+    - [ ] Fallback handlers for critical paths
+    - [ ] Input validation schemas defined
+  </Accordion>
+
+  <Accordion title="Performance">
+    - [ ] Appropriate models selected for each task
+    - [ ] Parallel execution where possible
+    - [ ] Caching for expensive operations
+    - [ ] Token usage optimized
+  </Accordion>
+
+  <Accordion title="Testing">
+    - [ ] Unit tests for individual nodes
+    - [ ] Integration tests for workflows
+    - [ ] Edge cases and error scenarios covered
+    - [ ] Test data fixtures maintained
+  </Accordion>
+
+  <Accordion title="Deployment">
+    - [ ] Environment separation configured
+    - [ ] Semantic versioning applied
+    - [ ] CI/CD pipeline set up
+    - [ ] Rollback procedures documented
+  </Accordion>
+
+  <Accordion title="Monitoring">
+    - [ ] Key metrics tracked
+    - [ ] Alerts configured
+    - [ ] Logging enabled
+    - [ ] Dashboards created
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Security Guide" icon="shield" href="/guides/security">
+    Secure your workflows
+  </Card>
+  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
+    Handle failures gracefully
+  </Card>
+</CardGroup>

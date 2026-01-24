@@ -1,0 +1,379 @@
+---
+title: "Nodes"
+description: "Understanding the different node types in Fibonacci"
+---
+
+Nodes are the building blocks of workflows. Each node performs a specific action and can depend on the outputs of other nodes.
+
+## Node Types Overview
+
+<CardGroup cols={2}>
+  <Card title="LLMNode" icon="brain">
+    Calls Claude or other LLMs to analyze, generate, or transform content
+  </Card>
+  <Card title="ToolNode" icon="wrench">
+    Executes integrations like Google Sheets, Slack, APIs, etc.
+  </Card>
+  <Card title="CriticNode" icon="magnifying-glass">
+    Evaluates and scores the output of other nodes
+  </Card>
+  <Card title="ConditionalNode" icon="code-branch">
+    Branches workflow based on conditions
+  </Card>
+</CardGroup>
+
+---
+
+## LLMNode
+
+The most common node type. Uses AI to process text.
+
+### Basic Usage
+
+```python
+from fibonacci import LLMNode
+
+node = LLMNode(
+    id="analyze",                    # Unique identifier (required)
+    name="Analyze Text",             # Human-readable name (required)
+    instruction="Analyze: {{input.text}}"  # Prompt (required)
+)
+```
+
+### Full Options
+
+```python
+analyze = LLMNode(
+    id="analyze_sentiment",
+    name="Sentiment Analysis",
+    instruction="""
+    Analyze the sentiment of this text.
+    Respond with: positive, negative, or neutral
+    
+    Text: {{input.text}}
+    """,
+    model="claude-sonnet-4-5-20250929",  # Model to use
+    max_tokens=500,              # Max response tokens
+    temperature=0.7,             # Creativity (0-1)
+    dependencies=[]              # Nodes this depends on
+)
+```
+
+### Available Models
+
+| Model | Best For | Speed | Cost |
+|-------|----------|-------|------|
+| `claude-sonnet-4-5-20250929` | Most tasks | Fast | $ |
+| `claude-opus-4-5-20251101` | Complex reasoning | Slower | $$$ |
+| `claude-haiku-4-5` | Simple tasks | Fastest | ¢ |
+
+### Template Variables
+
+Reference inputs and other node outputs:
+
+```python
+LLMNode(
+    id="summarize",
+    instruction="""
+    Summarize this data:
+    
+    Input: {{input.raw_data}}
+    Previous analysis: {{analyze_sentiment}}
+    User preferences: {{input.preferences.format}}
+    """
+)
+```
+
+---
+
+## ToolNode
+
+Executes integrations with external services.
+
+### Basic Usage
+
+```python
+from fibonacci import ToolNode
+
+node = ToolNode(
+    id="read_sheet",
+    name="Read Google Sheet",
+    tool="google_sheets_read",
+    params={
+        "spreadsheet_id": "{{input.sheet_id}}",
+        "range": "A1:D100"
+    }
+)
+```
+
+### Full Options
+
+```python
+send_email = ToolNode(
+    id="send_report",
+    name="Send Report Email",
+    tool="gmail_send",
+    params={
+        "to": "{{input.recipient}}",
+        "subject": "Weekly Report",
+        "body": "{{generate_report}}"
+    },
+    timeout=30,              # Timeout in seconds
+    dependencies=["generate_report"]
+)
+```
+
+### Popular Tools
+
+<AccordionGroup>
+  <Accordion title="Google Workspace">
+    - `google_sheets_read` - Read spreadsheet data
+    - `google_sheets_write` - Write to spreadsheet
+    - `google_docs_read` - Read document content
+    - `google_docs_write` - Create/update documents
+    - `gmail_send` - Send emails
+    - `google_calendar_create` - Create events
+  </Accordion>
+  
+  <Accordion title="Communication">
+    - `slack_send_message` - Send Slack messages
+    - `slack_create_channel` - Create channels
+    - `discord_send` - Send Discord messages
+    - `twilio_sms` - Send SMS
+  </Accordion>
+  
+  <Accordion title="Data & APIs">
+    - `http_request` - Generic HTTP calls
+    - `webhook_call` - Call webhooks
+    - `database_query` - Query databases
+    - `s3_upload` - Upload to S3
+  </Accordion>
+  
+  <Accordion title="Business Tools">
+    - `salesforce_create` - Create Salesforce records
+    - `hubspot_contact` - Manage HubSpot contacts
+    - `notion_page` - Create Notion pages
+    - `airtable_record` - Manage Airtable records
+  </Accordion>
+</AccordionGroup>
+
+### Discover Tools
+
+```python
+from fibonacci import list_tools, search_tools, print_tool_info
+
+# List all tools
+tools = list_tools()
+
+# Search for specific tools
+slack_tools = search_tools("slack")
+
+# Get detailed info
+print_tool_info("google_sheets_read")
+```
+
+---
+
+## CriticNode
+
+Evaluates the output of another node for quality.
+
+### Basic Usage
+
+```python
+from fibonacci import CriticNode
+
+critic = CriticNode(
+    id="evaluate_report",
+    name="Evaluate Report Quality",
+    target_node="generate_report",  # Node to evaluate
+    criteria=["clarity", "completeness", "accuracy"]
+)
+```
+
+### How It Works
+
+The critic node:
+1. Receives the output of the target node
+2. Evaluates it against the specified criteria
+3. Returns a score and feedback
+
+```python
+result = wf.run(input_data={...})
+
+evaluation = result.output_data["evaluate_report"]
+# {
+#   "score": 8.5,
+#   "feedback": {
+#     "clarity": "Well organized with clear sections",
+#     "completeness": "Missing Q4 projections",
+#     "accuracy": "All figures verified"
+#   }
+# }
+```
+
+### Custom Criteria
+
+```python
+critic = CriticNode(
+    id="check_code",
+    name="Code Review",
+    target_node="generate_code",
+    criteria=[
+        "correctness",
+        "efficiency", 
+        "readability",
+        "error_handling",
+        "security"
+    ]
+)
+```
+
+---
+
+## ConditionalNode
+
+Branches workflow execution based on conditions.
+
+### Basic Usage
+
+```python
+from fibonacci import ConditionalNode
+
+condition = ConditionalNode(
+    id="check_sentiment",
+    name="Check Sentiment",
+    left_value="{{analyze_sentiment}}",
+    operator="contains",
+    right_value="negative",
+    true_branch=["send_alert"],    # Nodes to run if true
+    false_branch=["send_summary"]  # Nodes to run if false
+)
+```
+
+### Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `equals` | Exact match | `"completed"` equals `"completed"` |
+| `not_equals` | Not equal | `"pending"` not_equals `"completed"` |
+| `contains` | Substring match | `"error occurred"` contains `"error"` |
+| `not_contains` | No substring | `"success"` not_contains `"error"` |
+| `greater_than` | Numeric comparison | `100` greater_than `50` |
+| `less_than` | Numeric comparison | `25` less_than `50` |
+| `starts_with` | String prefix | `"error: ..."` starts_with `"error"` |
+| `ends_with` | String suffix | `"file.pdf"` ends_with `".pdf"` |
+| `is_empty` | Empty check | `""` is_empty |
+| `is_not_empty` | Not empty | `"text"` is_not_empty |
+
+### Complex Branching
+
+```python
+# Check score and branch accordingly
+check_score = ConditionalNode(
+    id="check_score",
+    name="Check Quality Score",
+    left_value="{{evaluate_report.score}}",
+    operator="greater_than",
+    right_value="7",
+    true_branch=["publish_report", "notify_team"],
+    false_branch=["request_revision"]
+)
+```
+
+---
+
+## Common Node Properties
+
+All nodes share these properties:
+
+| Property | Type | Description |
+|----------|------|-------------|
+| `id` | `str` | Unique identifier (lowercase, underscores) |
+| `name` | `str` | Human-readable name |
+| `type` | `str` | Node type (auto-set) |
+| `dependencies` | `list[str]` | Node IDs this depends on |
+| `condition` | `dict` | Optional execution condition |
+| `enable_retry` | `bool` | Enable retry on failure |
+| `max_retries` | `int` | Max retry attempts |
+| `retry_delay` | `float` | Delay between retries |
+
+## Dependencies
+
+Control execution order by declaring dependencies:
+
+```python
+# Node B depends on Node A
+node_a = LLMNode(id="a", name="A", instruction="...")
+node_b = LLMNode(id="b", name="B", instruction="...", dependencies=["a"])
+
+# Or use fluent API
+node_b = LLMNode(id="b", name="B", instruction="...").depends_on("a")
+```
+
+### Execution Order
+
+```
+No dependencies    → Runs immediately
+dependencies=["a"] → Waits for "a" to complete
+dependencies=["a", "b"] → Waits for both "a" AND "b"
+```
+
+## Retry Configuration
+
+Handle transient failures:
+
+```python
+# Enable retries with fluent API
+node = ToolNode(
+    id="api_call",
+    tool="http_request",
+    params={...}
+).with_retry(max_retries=3, delay=2.0)
+
+# Or in constructor
+node = ToolNode(
+    id="api_call",
+    tool="http_request",
+    params={...},
+    enable_retry=True,
+    max_retries=3,
+    retry_delay=2.0  # Seconds, with exponential backoff
+)
+```
+
+## Conditional Execution
+
+Run a node only if a condition is met:
+
+```python
+# Only run if input.send_email is "true"
+node = ToolNode(
+    id="send",
+    tool="gmail_send",
+    params={...}
+).with_condition(
+    left_value="{{input.send_email}}",
+    operator="equals",
+    right_value="true"
+)
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Tool Nodes Deep Dive"
+    icon="wrench"
+    href="/guides/tool-nodes"
+  >
+    Explore all available tool integrations
+  </Card>
+  <Card
+    title="Conditional Logic"
+    icon="code-branch"
+    href="/guides/conditional-logic"
+  >
+    Build complex branching workflows
+  </Card>
+</CardGroup>

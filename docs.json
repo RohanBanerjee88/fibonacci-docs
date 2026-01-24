@@ -1,0 +1,130 @@
+{
+  "$schema": "https://mintlify.com/schema.json",
+  "name": "Fibonacci",
+  "logo": {
+    "dark": "/logo/dark.svg",
+    "light": "/logo/light.svg"
+  },
+  "favicon": "/favicon.svg",
+  "colors": {
+    "primary": "#6366F1",
+    "light": "#818CF8",
+    "dark": "#4F46E5",
+    "anchors": {
+      "from": "#6366F1",
+      "to": "#8B5CF6"
+    }
+  },
+  "topbarLinks": [
+    {
+      "name": "Dashboard",
+      "url": "https://app.fibonacci.dev"
+    }
+  ],
+  "topbarCtaButton": {
+    "name": "Get Started",
+    "url": "https://app.fibonacci.dev/signup"
+  },
+  "tabs": [
+    {
+      "name": "Documentation",
+      "url": "/"
+    },
+    {
+      "name": "SDK Reference",
+      "url": "/sdk-reference"
+    },
+    {
+      "name": "API Reference",
+      "url": "/api-reference"
+    }
+  ],
+  "anchors": [
+    {
+      "name": "GitHub",
+      "icon": "github",
+      "url": "https://github.com/fibonacci-ai/fibonacci-sdk"
+    },
+    {
+      "name": "Community",
+      "icon": "discord",
+      "url": "https://discord.gg/fibonacci"
+    }
+  ],
+  "navigation": [
+    {
+      "group": "Getting Started",
+      "pages": [
+        "index",
+        "getting-started/quickstart",
+        "getting-started/installation",
+        "getting-started/authentication",
+        "getting-started/your-first-workflow"
+      ]
+    },
+    {
+      "group": "Core Concepts",
+      "pages": [
+        "guides/workflows",
+        "guides/nodes",
+        "guides/tool-nodes",
+        "guides/conditional-logic",
+        "guides/memory"
+      ]
+    },
+    {
+      "group": "Advanced Guides",
+      "pages": [
+        "guides/yaml-workflows",
+        "guides/cli",
+        "guides/error-handling",
+        "guides/security",
+        "guides/best-practices"
+      ]
+    },
+    {
+      "group": "SDK Reference",
+      "pages": [
+        "sdk-reference/overview"
+      ]
+    },
+    {
+      "group": "Core Classes",
+      "pages": [
+        "sdk-reference/workflow",
+        "sdk-reference/client"
+      ]
+    },
+    {
+      "group": "Node Types",
+      "pages": [
+        "sdk-reference/llm-node",
+        "sdk-reference/tool-node",
+        "sdk-reference/critic-node",
+        "sdk-reference/conditional-node"
+      ]
+    },
+    {
+      "group": "Utilities",
+      "pages": [
+        "sdk-reference/memory",
+        "sdk-reference/exceptions"
+      ]
+    },
+    {
+      "group": "API Reference",
+      "pages": [
+        "api-reference/overview"
+      ]
+    }
+  ],
+  "footerSocials": {
+    "github": "https://github.com/fibonacci-ai",
+    "twitter": "https://twitter.com/fibonacci_ai",
+    "discord": "https://discord.gg/fibonacci"
+  },
+  "feedback": {
+    "thumbsRating": true,
+    "suggestEdit": true
+  }
+}

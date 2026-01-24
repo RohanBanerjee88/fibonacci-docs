@@ -1,0 +1,168 @@
+---
+title: "Quickstart"
+description: "Get up and running with Fibonacci in under 5 minutes"
+---
+
+## Prerequisites
+
+Before you begin, make sure you have:
+
+<CardGroup cols={2}>
+  <Card title="Python 3.11+" icon="python">
+    Fibonacci requires Python 3.11 or higher
+  </Card>
+  <Card title="API Key" icon="key">
+    Sign up at [fibonacci.today](https://fibonacci.today) to get your API key
+  </Card>
+</CardGroup>
+
+## Installation
+
+Install the Fibonacci SDK using pip:
+
+<CodeGroup>
+
+```bash pip
+pip install fibonacci-sdk
+```
+
+```bash poetry
+poetry add fibonacci-sdk
+```
+
+```bash uv
+uv add fibonacci-sdk
+```
+
+</CodeGroup>
+
+<Note>
+  For secure API key storage, install with the security extras:
+  ```bash
+  pip install fibonacci-sdk[security]
+  ```
+</Note>
+
+## Set Up Authentication
+
+Create a `.env` file in your project root:
+
+```bash .env
+FIBONACCI_API_KEY=fib_live_your_api_key_here
+```
+
+<Warning>
+  Never commit your `.env` file to version control. Add it to your `.gitignore`.
+</Warning>
+
+Or use secure keychain storage (recommended for production):
+
+```python
+from fibonacci import save_api_key_secure
+
+# Save to system keychain (macOS Keychain, Windows Credential Manager, etc.)
+save_api_key_secure("fib_live_your_api_key_here")
+```
+
+## Your First Workflow
+
+Let's create a simple workflow that uses AI to analyze text:
+
+```python
+from fibonacci import Workflow, LLMNode
+from dotenv import load_dotenv
+import os
+
+# Load environment variables
+load_dotenv()
+
+# Create a workflow
+wf = Workflow(
+    name="Text Analyzer",
+    description="Analyzes text for sentiment and key points"
+)
+
+# Add an LLM node
+analyze = LLMNode(
+    id="analyze_text",
+    name="Analyze Text",
+    instruction="""
+    Analyze the following text and provide:
+    1. Overall sentiment (positive, negative, neutral)
+    2. Key points (bullet list)
+    3. Suggested actions
+    
+    Text: {{input.text}}
+    """
+)
+
+wf.add_node(analyze)
+
+# Deploy to Fibonacci
+workflow_id = wf.deploy(api_key=os.getenv("FIBONACCI_API_KEY"))
+print(f"✅ Deployed! Workflow ID: {workflow_id}")
+
+# Execute the workflow
+result = wf.run(input_data={
+    "text": "Our Q4 sales exceeded expectations by 15%. The team did an amazing job!"
+})
+
+print(f"Status: {result.status}")
+print(f"Output: {result.output_data['analyze_text']}")
+```
+
+## Expected Output
+
+```
+✅ Deployed! Workflow ID: wf_abc123xyz
+
+Status: completed
+Output: 
+**Sentiment:** Positive
+
+**Key Points:**
+- Q4 sales exceeded expectations by 15%
+- Team performance was exceptional
+
+**Suggested Actions:**
+- Recognize and reward the team
+- Analyze what contributed to success
+- Set ambitious Q1 targets
+```
+
+## What's Next?
+
+<CardGroup cols={2}>
+  <Card
+    title="Build Your First Real Workflow"
+    icon="hammer"
+    href="/getting-started/your-first-workflow"
+  >
+    Create a complete workflow with multiple nodes and tool integrations
+  </Card>
+  <Card
+    title="Learn About Nodes"
+    icon="sitemap"
+    href="/guides/nodes"
+  >
+    Understand the different node types and when to use each
+  </Card>
+  <Card
+    title="Explore Tools"
+    icon="toolbox"
+    href="/guides/tool-nodes"
+  >
+    Connect to Google Sheets, Slack, and 100+ other services
+  </Card>
+  <Card
+    title="Security Best Practices"
+    icon="shield"
+    href="/guides/security"
+  >
+    Learn how to secure your API keys and audit your workflows
+  </Card>
+</CardGroup>
+
+<Check>
+  **Congratulations!** You've just created and deployed your first Fibonacci workflow.
+</Check>

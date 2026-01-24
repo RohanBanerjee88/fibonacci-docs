@@ -1,0 +1,325 @@
+---
+title: 'Memory'
+description: 'Memory configuration and management for persistent workflow state'
+---
+
+The memory system enables workflows to persist and retrieve data across executions.
+
+## MemoryConfig
+
+Configure the memory backend for a workflow.
+
+```python
+from fibonacci import Workflow, MemoryConfig
+
+workflow = Workflow(
+    name="stateful-workflow",
+    memory_config=MemoryConfig(
+        backend="redis",
+        connection_url="redis://localhost:6379/0"
+    )
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `backend` | `str` | `"memory"` | Storage backend |
+| `connection_url` | `str` | `None` | Connection string for remote backends |
+| `key_prefix` | `str` | `"fibonacci:"` | Prefix for all keys |
+| `default_ttl` | `int` | `None` | Default TTL in seconds |
+| `encryption_key` | `str` | `None` | Key for value encryption |
+| `encrypt_values` | `bool` | `False` | Enable encryption |
+
+### Supported Backends
+
+| Backend | Connection URL Format |
+|---------|----------------------|
+| `memory` | N/A (in-process) |
+| `redis` | `redis://host:port/db` |
+| `postgres` | `postgresql://user:pass@host/db` |
+| `dynamodb` | `dynamodb://region` |
+
+## MemoryManager
+
+Access via `workflow.memory`:
+
+```python
+workflow = Workflow(name="my-workflow")
+memory = workflow.memory
+```
+
+### Methods
+
+#### set
+
+Store a value in memory.
+
+```python
+memory.set(
+    key: str,
+    value: Any,
+    scope: str = "workflow",
+    user_id: str | None = None,
+    ttl: int | None = None
+) -> bool
+```
+
+**Parameters:**
+- `key`: Storage key
+- `value`: Value to store (must be JSON-serializable)
+- `scope`: Memory scope (workflow/user/organization/global)
+- `user_id`: User identifier (required for user scope)
+- `ttl`: Time-to-live in seconds
+
+**Example:**
+```python
+# Store workflow-scoped data
+memory.set("last_run", {"timestamp": "2025-01-23"})
+
+# Store user-scoped data
+memory.set(
+    "preferences",
+    {"theme": "dark"},
+    scope="user",
+    user_id="user-123"
+)
+
+# Store with expiration
+memory.set("cache", data, ttl=3600)
+```
+
+---
+
+#### get
+
+Retrieve a value from memory.
+
+```python
+memory.get(
+    key: str,
+    scope: str = "workflow",
+    user_id: str | None = None,
+    default: Any = None
+) -> Any
+```
+
+**Parameters:**
+- `key`: Storage key
+- `scope`: Memory scope
+- `user_id`: User identifier
+- `default`: Default value if key not found
+
+**Example:**
+```python
+# Get with default
+prefs = memory.get("preferences", default={})
+
+# Get user-scoped data
+history = memory.get(
+    "chat_history",
+    scope="user",
+    user_id="user-123",
+    default=[]
+)
+```
+
+---
+
+#### delete
+
+Delete a value from memory.
+
+```python
+memory.delete(
+    key: str,
+    scope: str = "workflow",
+    user_id: str | None = None
+) -> bool
+```
+
+---
+
+#### exists
+
+Check if a key exists.
+
+```python
+memory.exists(
+    key: str,
+    scope: str = "workflow",
+    user_id: str | None = None
+) -> bool
+```
+
+---
+
+#### clear
+
+Clear all memory in a scope.
+
+```python
+memory.clear(
+    scope: str = "workflow",
+    user_id: str | None = None
+) -> bool
+```
+
+---
+
+#### list_keys
+
+List all keys in a scope.
+
+```python
+memory.list_keys(
+    scope: str = "workflow",
+    user_id: str | None = None,
+    pattern: str | None = None
+) -> list[str]
+```
+
+**Example:**
+```python
+# List all keys
+keys = memory.list_keys()
+
+# List with pattern
+cache_keys = memory.list_keys(pattern="cache:*")
+```
+
+## Memory Scopes
+
+| Scope | Visibility | Use Case |
+|-------|-----------|----------|
+| `workflow` | Single workflow | Execution state, temp data |
+| `user` | Single user | Preferences, history |
+| `organization` | All org users | Shared knowledge |
+| `global` | Everything | App-wide config |
+
+### Scope Examples
+
+```python
+# Workflow scope - isolated per workflow
+memory.set("step_results", data, scope="workflow")
+
+# User scope - isolated per user across workflows
+memory.set("preferences", prefs, scope="user", user_id="u123")
+
+# Organization scope - shared across org
+memory.set("knowledge_base", kb, scope="organization")
+
+# Global scope - shared everywhere
+memory.set("app_config", config, scope="global")
+```
+
+## Memory in Nodes
+
+### Reading Memory in Prompts
+
+```python
+node = LLMNode(
+    id="chat",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""Previous context: {{memory.history}}
+    
+User: {{input.message}}""",
+    memory_read=["history"]  # Specify keys to read
+)
+```
+
+### Writing Memory from Nodes
+
+```python
+node = LLMNode(
+    id="summarizer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Summarize: {{input.text}}",
+    memory_write={
+        "key": "last_summary",
+        "scope": "user"
+    }
+)
+```
+
+## Encryption
+
+Enable encryption for sensitive data:
+
+```python
+from fibonacci import Workflow, MemoryConfig
+
+workflow = Workflow(
+    name="secure-workflow",
+    memory_config=MemoryConfig(
+        backend="redis",
+        connection_url="redis://localhost:6379",
+        encrypt_values=True,
+        encryption_key="your-32-byte-key-here..."
+    )
+)
+
+# Data is encrypted at rest
+workflow.memory.set("sensitive", {"ssn": "123-45-6789"})
+```
+
+## Complete Example
+
+```python
+from fibonacci import Workflow, LLMNode, MemoryConfig
+
+# Configure with Redis backend
+workflow = Workflow(
+    name="chatbot",
+    memory_config=MemoryConfig(
+        backend="redis",
+        connection_url="redis://localhost:6379/0",
+        key_prefix="chatbot:"
+    )
+)
+
+# Chat node reads history
+chat = LLMNode(
+    id="chat",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""Conversation history:
+{{memory.history}}
+
+User: {{input.message}}
+
+Respond naturally.""",
+    memory_read=["history"]
+)
+
+workflow.add_node(chat)
+
+def chat_with_user(user_id: str, message: str):
+    # Get history
+    history = workflow.memory.get(
+        "history",
+        scope="user",
+        user_id=user_id,
+        default=[]
+    )
+    
+    # Execute
+    result = workflow.execute(
+        inputs={"message": message},
+        user_id=user_id
+    )
+    
+    # Update history
+    history.append({"role": "user", "content": message})
+    history.append({"role": "assistant", "content": result["chat"]})
+    history = history[-20:]  # Keep last 20
+    
+    workflow.memory.set(
+        "history",
+        history,
+        scope="user",
+        user_id=user_id
+    )
+    
+    return result["chat"]
+```

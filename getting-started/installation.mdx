@@ -1,0 +1,198 @@
+---
+title: "Installation"
+description: "Install and configure the Fibonacci SDK"
+---
+
+## System Requirements
+
+<CardGroup cols={2}>
+  <Card title="Python Version" icon="python">
+    Python 3.11 or higher is required
+  </Card>
+  <Card title="Operating Systems" icon="desktop">
+    macOS, Linux, Windows (64-bit)
+  </Card>
+</CardGroup>
+
+## Installation Methods
+
+### Using pip (Recommended)
+
+```bash
+pip install fibonacci-sdk
+```
+
+### Using Poetry
+
+```bash
+poetry add fibonacci-sdk
+```
+
+### Using uv
+
+```bash
+uv add fibonacci-sdk
+```
+
+### From Source
+
+```bash
+git clone https://github.com/fibonacci-ai/fibonacci-sdk.git
+cd fibonacci-sdk
+pip install -e .
+```
+
+## Optional Dependencies
+
+### Security Features
+
+For secure keychain storage and enhanced security features:
+
+```bash
+pip install fibonacci-sdk[security]
+```
+
+This includes:
+- `keyring` - System keychain integration (macOS Keychain, Windows Credential Manager, Linux Secret Service)
+- Secure API key storage
+- Migration tools from plaintext to encrypted storage
+
+### Development Dependencies
+
+For contributing to Fibonacci or running tests:
+
+```bash
+pip install fibonacci-sdk[dev]
+```
+
+This includes:
+- `pytest` - Testing framework
+- `pytest-asyncio` - Async test support
+- `black` - Code formatting
+- `ruff` - Linting
+- `mypy` - Type checking
+
+### Full Installation
+
+Install everything:
+
+```bash
+pip install fibonacci-sdk[security,dev]
+```
+
+## Verify Installation
+
+After installation, verify everything is working:
+
+```python
+import fibonacci
+
+# Check version
+print(f"Fibonacci SDK v{fibonacci.__version__}")
+
+# Check available classes
+from fibonacci import (
+    Workflow,
+    LLMNode,
+    ToolNode,
+    CriticNode,
+    ConditionalNode,
+    Memory,
+    FibonacciClient
+)
+
+print("✅ All core classes imported successfully!")
+```
+
+You should see:
+
+```
+Fibonacci SDK v0.1.0
+✅ All core classes imported successfully!
+```
+
+## CLI Installation
+
+The SDK includes a command-line interface. After installation, the `fibonacci` command is available:
+
+```bash
+fibonacci version
+```
+
+Output:
+
+```
+  _____ _ _                                _   ____  ____  _  __
+ |  ___(_) |__   ___  _ __   __ _  ___ ___(_) / ___||  _ \| |/ /
+ | |_  | | '_ \ / _ \| '_ \ / _` |/ __/ __| | \___ \| | | | ' / 
+ |  _| | | |_) | (_) | | | | (_| | (_| (__| |  ___) | |_| | . \ 
+ |_|   |_|_.__/ \___/|_| |_|\__,_|\___\___|_| |____/|____/|_|\_\
+                                                                 
+         AI Workflow Automation • Build. Deploy. Execute.
+v0.1.0
+```
+
+## Troubleshooting
+
+<AccordionGroup>
+  <Accordion title="ImportError: No module named 'fibonacci'">
+    Make sure you've activated your virtual environment:
+    ```bash
+    source venv/bin/activate  # Linux/macOS
+    .\venv\Scripts\activate   # Windows
+    ```
+    Then reinstall:
+    ```bash
+    pip install fibonacci-sdk
+    ```
+  </Accordion>
+
+  <Accordion title="Python version error">
+    Fibonacci requires Python 3.11+. Check your version:
+    ```bash
+    python --version
+    ```
+    If needed, install a newer Python version or use pyenv:
+    ```bash
+    pyenv install 3.11.0
+    pyenv local 3.11.0
+    ```
+  </Accordion>
+
+  <Accordion title="Keyring not working on Linux">
+    On Linux, you may need to install the Secret Service backend:
+    ```bash
+    # Ubuntu/Debian
+    sudo apt-get install gnome-keyring
+    
+    # Fedora
+    sudo dnf install gnome-keyring
+    ```
+  </Accordion>
+
+  <Accordion title="SSL certificate errors">
+    If you're behind a corporate proxy:
+    ```bash
+    pip install --trusted-host pypi.org --trusted-host files.pythonhosted.org fibonacci-sdk
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Set Up Authentication"
+    icon="key"
+    href="/getting-started/authentication"
+  >
+    Configure your API key securely
+  </Card>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/getting-started/quickstart"
+  >
+    Build your first workflow
+  </Card>
+</CardGroup>

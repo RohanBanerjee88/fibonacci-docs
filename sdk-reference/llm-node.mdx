@@ -1,0 +1,365 @@
+---
+title: 'LLMNode'
+description: 'Node for AI language model interactions'
+---
+
+The `LLMNode` class executes prompts against AI language models, supporting templating, structured outputs, and various model configurations.
+
+## Constructor
+
+```python
+from fibonacci import LLMNode
+
+node = LLMNode(
+    id="analyzer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Analyze the following text: {{input.text}}"
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `id` | `str` | Required | Unique node identifier |
+| `model` | `str` | Required | Model identifier |
+| `prompt` | `str` | Required | Prompt template with `{{variables}}` |
+| `system_prompt` | `str` | `None` | System message for the model |
+| `temperature` | `float` | `1.0` | Sampling temperature (0.0-2.0) |
+| `max_tokens` | `int` | `4096` | Maximum response tokens |
+| `output_format` | `str` | `"text"` | Output format: "text" or "json" |
+| `output_schema` | `dict` | `None` | JSON Schema for output validation |
+| `dependencies` | `list[str]` | `[]` | IDs of nodes this depends on |
+| `retry` | `RetryConfig` | `None` | Retry configuration |
+| `timeout` | `int` | `None` | Execution timeout in seconds |
+| `fallback` | `str` | `None` | Fallback node ID on failure |
+| `on_error` | `str` | `None` | Error handler node ID |
+| `memory_read` | `list[str]` | `[]` | Memory keys to read |
+| `memory_write` | `dict` | `None` | Memory write configuration |
+| `condition` | `dict` | `None` | Conditional execution |
+
+## Supported Models
+
+| Model | Identifier | Best For |
+|-------|-----------|----------|
+| Claude Opus 4.5 | `claude-opus-4-5-20251101` | Complex reasoning, analysis |
+| Claude Sonnet 4.5 | `claude-sonnet-4-5-20250929` | General purpose, balanced |
+| Claude Haiku 4.5 | `claude-haiku-4-5-20251001` | Fast, cost-effective tasks |
+
+## Template Variables
+
+Use `{{variable}}` syntax to inject dynamic values:
+
+```python
+node = LLMNode(
+    id="writer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""
+    Write a {{input.style}} email about {{input.topic}}.
+    
+    Previous analysis: {{analyzer}}
+    
+    User preferences: {{memory.preferences}}
+    """
+)
+```
+
+### Available Variables
+
+| Variable | Source |
+|----------|--------|
+| `{{input.field}}` | Workflow input |
+| `{{node_id}}` | Output from another node |
+| `{{node_id.field}}` | Specific field from node output |
+| `{{memory.key}}` | Value from memory |
+| `{{env.VAR}}` | Environment variable |
+
+## Structured Output
+
+### JSON Output
+
+```python
+node = LLMNode(
+    id="extractor",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Extract entities from: {{input.text}}",
+    output_format="json",
+    output_schema={
+        "type": "object",
+        "required": ["entities"],
+        "properties": {
+            "entities": {
+                "type": "array",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string"},
+                        "type": {"type": "string"},
+                        "confidence": {"type": "number"}
+                    }
+                }
+            }
+        }
+    }
+)
+```
+
+### Retry on Validation Error
+
+```python
+node = LLMNode(
+    id="structured",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Return JSON with sentiment analysis",
+    output_format="json",
+    output_schema=schema,
+    retry_on_validation_error=True,
+    max_validation_retries=2
+)
+```
+
+## System Prompts
+
+```python
+node = LLMNode(
+    id="assistant",
+    model="claude-sonnet-4-5-20250929",
+    system_prompt="""You are a helpful customer service assistant.
+    - Be concise and friendly
+    - Always offer to help further
+    - Never make promises you can't keep""",
+    prompt="Customer message: {{input.message}}"
+)
+```
+
+## Dependencies
+
+Control execution order with dependencies:
+
+```python
+from fibonacci import Workflow, LLMNode
+
+workflow = Workflow(name="pipeline")
+
+# First node - no dependencies
+analyzer = LLMNode(
+    id="analyzer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Analyze: {{input.text}}"
+)
+
+# Second node - depends on analyzer
+summarizer = LLMNode(
+    id="summarizer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Summarize this analysis: {{analyzer}}",
+    dependencies=["analyzer"]
+)
+
+# Third node - depends on both
+reporter = LLMNode(
+    id="reporter",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""
+    Create report:
+    Analysis: {{analyzer}}
+    Summary: {{summarizer}}
+    """,
+    dependencies=["analyzer", "summarizer"]
+)
+```
+
+## Memory Integration
+
+### Reading Memory
+
+```python
+node = LLMNode(
+    id="chat",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""
+    Conversation history:
+    {{memory.history}}
+    
+    User preferences:
+    {{memory.preferences}}
+    
+    User message: {{input.message}}
+    """,
+    memory_read=["history", "preferences"]
+)
+```
+
+### Writing Memory
+
+```python
+node = LLMNode(
+    id="summarizer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Summarize: {{input.text}}",
+    memory_write={
+        "key": "last_summary",
+        "scope": "user"  # workflow, user, organization, global
+    }
+)
+```
+
+## Conditional Execution
+
+Only execute when condition is met:
+
+```python
+node = LLMNode(
+    id="detailed_analysis",
+    model="claude-opus-4-5-20251101",
+    prompt="Deep analysis: {{input.text}}",
+    condition={
+        "field": "{{input.analysis_level}}",
+        "operator": "equals",
+        "value": "detailed"
+    }
+)
+```
+
+## Error Handling
+
+### Retry Configuration
+
+```python
+from fibonacci import LLMNode, RetryConfig
+
+node = LLMNode(
+    id="analyzer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Analyze: {{input.text}}",
+    retry=RetryConfig(
+        max_attempts=3,
+        delay=1.0,
+        backoff="exponential"
+    )
+)
+```
+
+### Fallback Node
+
+```python
+# Primary with expensive model
+primary = LLMNode(
+    id="primary",
+    model="claude-opus-4-5-20251101",
+    prompt="Complex analysis: {{input.text}}",
+    timeout=60,
+    fallback="fallback"
+)
+
+# Fallback with faster model
+fallback = LLMNode(
+    id="fallback",
+    model="claude-haiku-4-5-20251001",
+    prompt="Quick analysis: {{input.text}}"
+)
+```
+
+## Model Parameters
+
+### Temperature
+
+Control randomness (0.0 = deterministic, 2.0 = very random):
+
+```python
+# Deterministic for factual tasks
+factual = LLMNode(
+    id="factual",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Extract facts: {{input.text}}",
+    temperature=0.0
+)
+
+# Creative for writing
+creative = LLMNode(
+    id="creative",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Write a story about: {{input.topic}}",
+    temperature=1.2
+)
+```
+
+### Max Tokens
+
+Limit response length:
+
+```python
+node = LLMNode(
+    id="tweet",
+    model="claude-haiku-4-5-20251001",
+    prompt="Write a tweet about: {{input.topic}}",
+    max_tokens=100
+)
+```
+
+## Complete Example
+
+```python
+from fibonacci import Workflow, LLMNode, RetryConfig
+
+workflow = Workflow(name="content-pipeline")
+
+# Outline generator
+outliner = LLMNode(
+    id="outliner",
+    model="claude-sonnet-4-5-20250929",
+    system_prompt="You are a content strategist.",
+    prompt="Create an outline for a blog post about: {{input.topic}}",
+    temperature=0.7,
+    output_format="json",
+    output_schema={
+        "type": "object",
+        "properties": {
+            "title": {"type": "string"},
+            "sections": {
+                "type": "array",
+                "items": {"type": "string"}
+            }
+        }
+    }
+)
+
+# Content writer
+writer = LLMNode(
+    id="writer",
+    model="claude-sonnet-4-5-20250929",
+    system_prompt="You are a skilled blog writer.",
+    prompt="""
+    Write a blog post following this outline:
+    Title: {{outliner.title}}
+    Sections: {{outliner.sections}}
+    
+    Style: {{input.style}}
+    """,
+    dependencies=["outliner"],
+    max_tokens=2000,
+    retry=RetryConfig(max_attempts=2)
+)
+
+# Editor
+editor = LLMNode(
+    id="editor",
+    model="claude-opus-4-5-20251101",
+    system_prompt="You are an expert editor.",
+    prompt="Edit for clarity and engagement: {{writer}}",
+    dependencies=["writer"],
+    temperature=0.3
+)
+
+workflow.add_node(outliner)
+workflow.add_node(writer)
+workflow.add_node(editor)
+
+# Execute
+result = workflow.execute(inputs={
+    "topic": "AI in Healthcare",
+    "style": "informative yet engaging"
+})
+
+print(result["editor"])
+```

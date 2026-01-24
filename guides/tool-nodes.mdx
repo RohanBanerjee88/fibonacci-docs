@@ -1,0 +1,537 @@
+---
+title: "Tool Integrations"
+description: "Connect to 100+ services with ToolNodes"
+---
+
+ToolNodes let you interact with external services like Google Sheets, Slack, databases, and APIs.
+
+## Using ToolNodes
+
+### Basic Structure
+
+```python
+from fibonacci import ToolNode
+
+node = ToolNode(
+    id="unique_id",           # Required: Unique identifier
+    name="Human Name",        # Required: Display name
+    tool="tool_name",         # Required: Tool to execute
+    params={                  # Required: Tool parameters
+        "param1": "value",
+        "param2": "{{input.field}}"
+    }
+)
+```
+
+### With Dependencies
+
+```python
+# Read data, then write to another sheet
+read = ToolNode(
+    id="read_source",
+    name="Read Source",
+    tool="google_sheets_read",
+    params={"spreadsheet_id": "...", "range": "A1:Z100"}
+)
+
+write = ToolNode(
+    id="write_dest",
+    name="Write Destination",
+    tool="google_sheets_write",
+    params={
+        "spreadsheet_id": "...",
+        "range": "A1",
+        "values": "{{read_source}}"
+    },
+    dependencies=["read_source"]
+)
+```
+
+---
+
+## Tool Discovery
+
+### List All Tools
+
+```python
+from fibonacci import list_tools
+
+tools = list_tools()
+for tool in tools:
+    print(f"{tool['name']}: {tool['description']}")
+```
+
+### Search Tools
+
+```python
+from fibonacci import search_tools
+
+# Find Google-related tools
+google_tools = search_tools("google")
+
+# Find email tools
+email_tools = search_tools("email")
+```
+
+### Get Tool Schema
+
+```python
+from fibonacci import print_tool_info
+
+# See full details including parameters and examples
+print_tool_info("google_sheets_read")
+```
+
+Output:
+```
+======================================================================
+🔧 google_sheets_read
+======================================================================
+Category: google_workspace
+Description: Read data from a Google Sheets spreadsheet
+Cost per use: $0.0001
+
+📥 Input Parameters:
+  • spreadsheet_id (string) - required
+    The ID of the spreadsheet
+  • range (string) - required
+    The A1 notation range to read (e.g., "Sheet1!A1:D10")
+
+📖 Examples:
+  1. Read sales data
+     Params: {"spreadsheet_id": "abc123", "range": "Sales!A1:E100"}
+======================================================================
+```
+
+### Find Tool for Task
+
+```python
+from fibonacci import find_tool_for_task
+
+# Describe what you want to do
+tool = find_tool_for_task("send a message to slack")
+print(tool)  # "slack_send_message"
+
+tool = find_tool_for_task("read data from google sheets")
+print(tool)  # "google_sheets_read"
+```
+
+---
+
+## Google Workspace
+
+### Google Sheets
+
+<CodeGroup>
+
+```python Read
+read = ToolNode(
+    id="read_data",
+    name="Read Sheet Data",
+    tool="google_sheets_read",
+    params={
+        "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
+        "range": "Sheet1!A1:D100"
+    }
+)
+```
+
+```python Write
+write = ToolNode(
+    id="write_data",
+    name="Write to Sheet",
+    tool="google_sheets_write",
+    params={
+        "spreadsheet_id": "{{input.sheet_id}}",
+        "range": "Results!A1",
+        "values": [
+            ["Name", "Score", "Status"],
+            ["Alice", "95", "Pass"],
+            ["Bob", "82", "Pass"]
+        ]
+    }
+)
+```
+
+```python Append
+append = ToolNode(
+    id="append_row",
+    name="Append Row",
+    tool="google_sheets_append",
+    params={
+        "spreadsheet_id": "{{input.sheet_id}}",
+        "range": "Log!A:D",
+        "values": [["{{timestamp}}", "{{analyze_data}}"]]
+    }
+)
+```
+
+</CodeGroup>
+
+### Google Docs
+
+<CodeGroup>
+
+```python Read Document
+read_doc = ToolNode(
+    id="read_doc",
+    name="Read Document",
+    tool="google_docs_read",
+    params={
+        "document_id": "{{input.doc_id}}"
+    }
+)
+```
+
+```python Create Document
+create_doc = ToolNode(
+    id="create_doc",
+    name="Create Document",
+    tool="google_docs_create",
+    params={
+        "title": "{{input.title}}",
+        "content": "{{generate_report}}"
+    }
+)
+```
+
+</CodeGroup>
+
+### Gmail
+
+```python
+send_email = ToolNode(
+    id="send_email",
+    name="Send Email",
+    tool="gmail_send",
+    params={
+        "to": "recipient@example.com",
+        "subject": "Your Report is Ready",
+        "body": """
+        Hi {{input.recipient_name}},
+        
+        Your weekly report is attached.
+        
+        Summary:
+        {{executive_summary}}
+        
+        Best,
+        Fibonacci Bot
+        """,
+        "attachments": [
+            {"name": "report.pdf", "content": "{{report_pdf}}"}
+        ]
+    }
+)
+```
+
+---
+
+## Communication Tools
+
+### Slack
+
+<CodeGroup>
+
+```python Send Message
+slack_msg = ToolNode(
+    id="notify_team",
+    name="Notify Team",
+    tool="slack_send_message",
+    params={
+        "channel": "#team-updates",
+        "message": "🎉 Report generated!\n\n{{executive_summary}}"
+    }
+)
+```
+
+```python Send to User
+slack_dm = ToolNode(
+    id="dm_user",
+    name="DM User",
+    tool="slack_send_message",
+    params={
+        "channel": "@john.doe",
+        "message": "Hey! Your task is complete."
+    }
+)
+```
+
+```python Rich Message
+slack_rich = ToolNode(
+    id="rich_msg",
+    name="Rich Message",
+    tool="slack_send_message",
+    params={
+        "channel": "#alerts",
+        "blocks": [
+            {
+                "type": "header",
+                "text": {"type": "plain_text", "text": "📊 Weekly Report"}
+            },
+            {
+                "type": "section",
+                "text": {"type": "mrkdwn", "text": "{{summary}}"}
+            }
+        ]
+    }
+)
+```
+
+</CodeGroup>
+
+### Discord
+
+```python
+discord_msg = ToolNode(
+    id="discord_alert",
+    name="Discord Alert",
+    tool="discord_send",
+    params={
+        "webhook_url": "{{input.webhook}}",
+        "content": "Alert: {{analyze_data}}"
+    }
+)
+```
+
+---
+
+## HTTP & APIs
+
+### Generic HTTP Request
+
+```python
+api_call = ToolNode(
+    id="call_api",
+    name="Call External API",
+    tool="http_request",
+    params={
+        "method": "POST",
+        "url": "https://api.example.com/data",
+        "headers": {
+            "Authorization": "Bearer {{input.api_token}}",
+            "Content-Type": "application/json"
+        },
+        "body": {
+            "query": "{{input.search_term}}",
+            "limit": 10
+        }
+    }
+)
+```
+
+### Webhook
+
+```python
+webhook = ToolNode(
+    id="trigger_webhook",
+    name="Trigger Webhook",
+    tool="webhook_call",
+    params={
+        "url": "https://hooks.zapier.com/hooks/catch/123/abc",
+        "payload": {
+            "event": "report_generated",
+            "data": "{{report_data}}"
+        }
+    }
+)
+```
+
+---
+
+## Database Tools
+
+### SQL Query
+
+```python
+query = ToolNode(
+    id="query_db",
+    name="Query Database",
+    tool="database_query",
+    params={
+        "connection_string": "{{secrets.DATABASE_URL}}",
+        "query": """
+            SELECT customer_id, SUM(amount) as total
+            FROM orders
+            WHERE date >= '{{input.start_date}}'
+            GROUP BY customer_id
+            ORDER BY total DESC
+            LIMIT 10
+        """
+    }
+)
+```
+
+<Warning>
+  Never hardcode database credentials. Use secrets management.
+</Warning>
+
+---
+
+## Cloud Storage
+
+### AWS S3
+
+<CodeGroup>
+
+```python Upload
+s3_upload = ToolNode(
+    id="upload_s3",
+    name="Upload to S3",
+    tool="s3_upload",
+    params={
+        "bucket": "my-reports",
+        "key": "reports/{{input.report_id}}.pdf",
+        "content": "{{report_pdf}}",
+        "content_type": "application/pdf"
+    }
+)
+```
+
+```python Download
+s3_download = ToolNode(
+    id="download_s3",
+    name="Download from S3",
+    tool="s3_download",
+    params={
+        "bucket": "my-data",
+        "key": "data/{{input.file_name}}"
+    }
+)
+```
+
+</CodeGroup>
+
+---
+
+## CRM & Business Tools
+
+### Salesforce
+
+```python
+create_lead = ToolNode(
+    id="create_lead",
+    name="Create Salesforce Lead",
+    tool="salesforce_create",
+    params={
+        "object": "Lead",
+        "data": {
+            "FirstName": "{{input.first_name}}",
+            "LastName": "{{input.last_name}}",
+            "Email": "{{input.email}}",
+            "Company": "{{input.company}}",
+            "Description": "{{qualify_lead}}"
+        }
+    }
+)
+```
+
+### HubSpot
+
+```python
+hubspot_contact = ToolNode(
+    id="update_contact",
+    name="Update HubSpot Contact",
+    tool="hubspot_update_contact",
+    params={
+        "email": "{{input.email}}",
+        "properties": {
+            "lead_score": "{{score_lead}}",
+            "last_activity": "{{timestamp}}"
+        }
+    }
+)
+```
+
+### Notion
+
+```python
+notion_page = ToolNode(
+    id="create_notion",
+    name="Create Notion Page",
+    tool="notion_create_page",
+    params={
+        "database_id": "{{input.database_id}}",
+        "properties": {
+            "Name": "{{input.title}}",
+            "Status": "Ready",
+            "Priority": "High"
+        },
+        "content": "{{generate_notes}}"
+    }
+)
+```
+
+---
+
+## Tool Categories
+
+```python
+from fibonacci import list_tool_categories
+
+categories = list_tool_categories()
+for cat in categories:
+    print(f"{cat['name']}: {cat['count']} tools")
+    print(f"  Examples: {', '.join(cat['tools'][:3])}")
+```
+
+Output:
+```
+google_workspace: 12 tools
+  Examples: google_sheets_read, google_docs_read, gmail_send
+communication: 8 tools
+  Examples: slack_send_message, discord_send, twilio_sms
+databases: 5 tools
+  Examples: database_query, mongodb_find, redis_get
+cloud_storage: 6 tools
+  Examples: s3_upload, gcs_upload, azure_blob
+...
+```
+
+---
+
+## Error Handling
+
+### Retry on Failure
+
+```python
+api_call = ToolNode(
+    id="api_call",
+    name="API Call",
+    tool="http_request",
+    params={...}
+).with_retry(max_retries=3, delay=2.0)
+```
+
+### Timeout Configuration
+
+```python
+slow_api = ToolNode(
+    id="slow_api",
+    name="Slow API",
+    tool="http_request",
+    params={...},
+    timeout=60  # 60 seconds timeout
+)
+```
+
+---
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Conditional Logic"
+    icon="code-branch"
+    href="/guides/conditional-logic"
+  >
+    Branch workflows based on tool outputs
+  </Card>
+  <Card
+    title="Memory System"
+    icon="database"
+    href="/guides/memory"
+  >
+    Store and retrieve data across runs
+  </Card>
+</CardGroup>

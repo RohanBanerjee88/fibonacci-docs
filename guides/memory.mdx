@@ -1,0 +1,510 @@
+---
+title: 'Memory & State'
+description: 'Persist data across workflow executions with Fibonacci memory system'
+---
+
+Memory in Fibonacci allows workflows to store and retrieve data across executions, enabling stateful applications like chatbots, progressive data collection, and user preference tracking.
+
+## Memory Scopes
+
+Fibonacci provides four memory scopes, each with different visibility and lifecycle:
+
+| Scope | Visibility | Use Case |
+|-------|-----------|----------|
+| `workflow` | Single workflow | Execution history, intermediate results |
+| `user` | Single user across workflows | Preferences, conversation history |
+| `organization` | All users in organization | Shared knowledge bases, company data |
+| `global` | All workflows and users | Application-wide settings |
+
+## Basic Usage
+
+### Storing Memory
+
+```python
+from fibonacci import Workflow, Memory
+
+workflow = Workflow(name="memory-demo")
+
+# Store a simple value
+workflow.memory.set(
+    key="user_preference",
+    value={"theme": "dark", "language": "en"},
+    scope="user"
+)
+
+# Store with TTL (time-to-live in seconds)
+workflow.memory.set(
+    key="session_cache",
+    value={"last_query": "weather report"},
+    scope="workflow",
+    ttl=3600  # Expires in 1 hour
+)
+```
+
+### Retrieving Memory
+
+```python
+# Get a value (returns None if not found)
+preference = workflow.memory.get(
+    key="user_preference",
+    scope="user"
+)
+
+# Get with default value
+theme = workflow.memory.get(
+    key="user_preference",
+    scope="user",
+    default={"theme": "light"}
+)
+
+# Check if key exists
+if workflow.memory.exists("user_preference", scope="user"):
+    print("Preference found!")
+```
+
+### Deleting Memory
+
+```python
+# Delete a specific key
+workflow.memory.delete(key="session_cache", scope="workflow")
+
+# Clear all memory in a scope
+workflow.memory.clear(scope="workflow")
+```
+
+## Memory in Nodes
+
+Nodes can read from and write to memory using template variables and the `memory` parameter:
+
+### Reading Memory in Prompts
+
+```python
+from fibonacci import LLMNode
+
+chat_node = LLMNode(
+    id="chatbot",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""You are a helpful assistant. 
+    
+Previous conversation:
+{{memory.conversation_history}}
+
+User preferences:
+{{memory.user_preferences}}
+
+User message: {{input.message}}""",
+    memory_read=["conversation_history", "user_preferences"]
+)
+```
+
+### Writing Memory from Nodes
+
+```python
+from fibonacci import LLMNode
+
+summarize_node = LLMNode(
+    id="summarizer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Summarize: {{input.text}}",
+    memory_write={
+        "key": "last_summary",
+        "scope": "user"
+    }
+)
+```
+
+## Building Stateful Applications
+
+### Conversational Chatbot
+
+Build a chatbot that remembers conversation history:
+
+```python
+from fibonacci import Workflow, LLMNode
+
+def create_chatbot():
+    workflow = Workflow(
+        name="stateful-chatbot",
+        description="Chatbot with conversation memory"
+    )
+    
+    # Chat node that reads history and generates response
+    chat_node = LLMNode(
+        id="chat",
+        model="claude-sonnet-4-5-20250929",
+        prompt="""You are a friendly assistant with memory of past conversations.
+
+Conversation history:
+{{memory.history}}
+
+Current message: {{input.message}}
+
+Respond naturally, referencing past context when relevant.""",
+        memory_read=["history"]
+    )
+    
+    workflow.add_node(chat_node)
+    return workflow
+
+# Usage with history management
+workflow = create_chatbot()
+
+def chat(user_message: str, user_id: str):
+    # Get existing history
+    history = workflow.memory.get(
+        key="history",
+        scope="user",
+        user_id=user_id,
+        default=[]
+    )
+    
+    # Execute workflow
+    result = workflow.execute(
+        inputs={"message": user_message},
+        user_id=user_id
+    )
+    
+    # Update history
+    history.append({"role": "user", "content": user_message})
+    history.append({"role": "assistant", "content": result["chat"]})
+    
+    # Keep last 20 messages
+    history = history[-20:]
+    
+    workflow.memory.set(
+        key="history",
+        value=history,
+        scope="user",
+        user_id=user_id
+    )
+    
+    return result["chat"]
+```
+
+### User Preference Learning
+
+Track and apply user preferences over time:
+
+```python
+from fibonacci import Workflow, LLMNode, ToolNode
+
+workflow = Workflow(name="preference-learner")
+
+# Analyze user input for preferences
+analyzer = LLMNode(
+    id="analyze_preferences",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""Analyze this user input for implicit preferences:
+{{input.message}}
+
+Current known preferences:
+{{memory.preferences}}
+
+Return JSON with any new or updated preferences detected:
+{
+    "communication_style": "formal|casual|technical",
+    "detail_level": "brief|detailed|comprehensive", 
+    "topics_of_interest": ["topic1", "topic2"]
+}
+
+Only include fields where you detected a clear preference.""",
+    memory_read=["preferences"],
+    output_format="json"
+)
+
+# Generate personalized response
+responder = LLMNode(
+    id="respond",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""Respond to: {{input.message}}
+
+Adapt your response style based on user preferences:
+{{memory.preferences}}
+
+Detected preference updates:
+{{analyze_preferences}}""",
+    dependencies=["analyze_preferences"],
+    memory_read=["preferences"]
+)
+
+workflow.add_node(analyzer)
+workflow.add_node(responder)
+```
+
+### Progress Tracking
+
+Track multi-step process progress:
+
+```python
+from fibonacci import Workflow, LLMNode, ConditionalNode
+from datetime import datetime
+
+workflow = Workflow(name="onboarding-tracker")
+
+def update_progress(workflow, user_id: str, step: str, data: dict):
+    """Update user's onboarding progress"""
+    progress = workflow.memory.get(
+        key="onboarding_progress",
+        scope="user",
+        user_id=user_id,
+        default={"completed_steps": [], "data": {}}
+    )
+    
+    progress["completed_steps"].append(step)
+    progress["data"][step] = data
+    progress["last_updated"] = datetime.now().isoformat()
+    
+    workflow.memory.set(
+        key="onboarding_progress",
+        value=progress,
+        scope="user",
+        user_id=user_id
+    )
+
+def get_next_step(workflow, user_id: str) -> str:
+    """Determine next onboarding step"""
+    progress = workflow.memory.get(
+        key="onboarding_progress",
+        scope="user",
+        user_id=user_id,
+        default={"completed_steps": []}
+    )
+    
+    all_steps = ["welcome", "profile", "preferences", "tutorial", "complete"]
+    completed = progress["completed_steps"]
+    
+    for step in all_steps:
+        if step not in completed:
+            return step
+    
+    return "complete"
+```
+
+## Memory Patterns
+
+### Caching Expensive Operations
+
+```python
+from fibonacci import Workflow, ToolNode
+import hashlib
+
+workflow = Workflow(name="cached-operations")
+
+def get_cached_or_compute(workflow, operation: str, inputs: dict):
+    """Cache expensive computations"""
+    # Create cache key from inputs
+    cache_key = hashlib.md5(
+        f"{operation}:{str(inputs)}".encode()
+    ).hexdigest()
+    
+    # Check cache
+    cached = workflow.memory.get(
+        key=f"cache_{cache_key}",
+        scope="organization"
+    )
+    
+    if cached:
+        return cached["result"]
+    
+    # Compute if not cached
+    result = workflow.execute(inputs=inputs)
+    
+    # Cache for 24 hours
+    workflow.memory.set(
+        key=f"cache_{cache_key}",
+        value={"result": result, "inputs": inputs},
+        scope="organization",
+        ttl=86400
+    )
+    
+    return result
+```
+
+### Rate Limiting
+
+```python
+from datetime import datetime, timedelta
+
+def check_rate_limit(workflow, user_id: str, limit: int = 100) -> bool:
+    """Check if user is within rate limit"""
+    rate_data = workflow.memory.get(
+        key="rate_limit",
+        scope="user",
+        user_id=user_id,
+        default={"count": 0, "window_start": datetime.now().isoformat()}
+    )
+    
+    window_start = datetime.fromisoformat(rate_data["window_start"])
+    
+    # Reset if window expired (1 hour)
+    if datetime.now() - window_start > timedelta(hours=1):
+        rate_data = {"count": 0, "window_start": datetime.now().isoformat()}
+    
+    if rate_data["count"] >= limit:
+        return False
+    
+    rate_data["count"] += 1
+    workflow.memory.set(
+        key="rate_limit",
+        value=rate_data,
+        scope="user",
+        user_id=user_id,
+        ttl=3600
+    )
+    
+    return True
+```
+
+### Session Management
+
+```python
+import uuid
+from datetime import datetime, timedelta
+
+def create_session(workflow, user_id: str) -> str:
+    """Create a new session"""
+    session_id = str(uuid.uuid4())
+    
+    workflow.memory.set(
+        key=f"session_{session_id}",
+        value={
+            "user_id": user_id,
+            "created_at": datetime.now().isoformat(),
+            "data": {}
+        },
+        scope="user",
+        user_id=user_id,
+        ttl=7200  # 2 hour session
+    )
+    
+    return session_id
+
+def get_session(workflow, session_id: str, user_id: str) -> dict | None:
+    """Retrieve session data"""
+    return workflow.memory.get(
+        key=f"session_{session_id}",
+        scope="user",
+        user_id=user_id
+    )
+
+def update_session(workflow, session_id: str, user_id: str, data: dict):
+    """Update session data"""
+    session = get_session(workflow, session_id, user_id)
+    if session:
+        session["data"].update(data)
+        session["last_activity"] = datetime.now().isoformat()
+        workflow.memory.set(
+            key=f"session_{session_id}",
+            value=session,
+            scope="user",
+            user_id=user_id,
+            ttl=7200
+        )
+```
+
+## Memory Configuration
+
+### Default Memory Backend
+
+By default, Fibonacci uses an in-memory store. For production, configure a persistent backend:
+
+```python
+from fibonacci import Workflow, MemoryConfig
+
+# Redis backend
+workflow = Workflow(
+    name="production-workflow",
+    memory_config=MemoryConfig(
+        backend="redis",
+        connection_url="redis://localhost:6379/0",
+        key_prefix="fibonacci:"
+    )
+)
+
+# PostgreSQL backend
+workflow = Workflow(
+    name="production-workflow",
+    memory_config=MemoryConfig(
+        backend="postgres",
+        connection_url="postgresql://user:pass@localhost/fibonacci",
+        table_name="workflow_memory"
+    )
+)
+```
+
+### Memory Encryption
+
+Enable encryption for sensitive data:
+
+```python
+from fibonacci import Workflow, MemoryConfig
+
+workflow = Workflow(
+    name="secure-workflow",
+    memory_config=MemoryConfig(
+        backend="redis",
+        connection_url="redis://localhost:6379/0",
+        encryption_key="your-32-byte-encryption-key-here",
+        encrypt_values=True
+    )
+)
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use appropriate scopes">
+    Match memory scope to data sensitivity and sharing requirements:
+    - `workflow`: Temporary execution data
+    - `user`: Personal preferences, history
+    - `organization`: Shared resources, team data
+    - `global`: Application configuration
+  </Accordion>
+
+  <Accordion title="Set TTLs for temporary data">
+    Always set TTL for caches, sessions, and temporary data to prevent unbounded growth:
+    ```python
+    workflow.memory.set(key="temp", value=data, ttl=3600)
+    ```
+  </Accordion>
+
+  <Accordion title="Use structured keys">
+    Use consistent, hierarchical key naming:
+    ```python
+    # Good
+    "user:preferences:theme"
+    "session:abc123:cart"
+    "cache:api:weather:nyc"
+    
+    # Avoid
+    "theme"
+    "cart"
+    "weather"
+    ```
+  </Accordion>
+
+  <Accordion title="Handle missing data gracefully">
+    Always provide defaults when reading memory:
+    ```python
+    prefs = workflow.memory.get("prefs", default={"theme": "light"})
+    ```
+  </Accordion>
+
+  <Accordion title="Limit history size">
+    Cap array-based memory (like chat history) to prevent unbounded growth:
+    ```python
+    history = history[-50:]  # Keep last 50 items
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Workflows Guide" icon="diagram-project" href="/guides/workflows">
+    Learn workflow lifecycle management
+  </Card>
+  <Card title="Conditional Logic" icon="code-branch" href="/guides/conditional-logic">
+    Add branching based on memory values
+  </Card>
+</CardGroup>

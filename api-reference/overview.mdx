@@ -1,0 +1,145 @@
+---
+title: 'API Reference'
+description: 'Complete REST API reference for Fibonacci Cloud'
+---
+
+The Fibonacci REST API allows you to programmatically manage workflows, execute them, and interact with the Fibonacci platform.
+
+## Base URL
+
+```
+https://api.fibonacci.dev/v1
+```
+
+## Authentication
+
+All API requests require authentication via API key:
+
+```bash
+curl https://api.fibonacci.dev/v1/workflows \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+Get your API key from the [Fibonacci Dashboard](https://app.fibonacci.dev/settings/api-keys).
+
+## Quick Reference
+
+### Workflows
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/workflows` | List all workflows |
+| `POST` | `/workflows` | Create a workflow |
+| `GET` | `/workflows/{name}` | Get workflow details |
+| `PUT` | `/workflows/{name}` | Update a workflow |
+| `DELETE` | `/workflows/{name}` | Delete a workflow |
+
+### Execution
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/workflows/{name}/execute` | Execute a workflow |
+| `GET` | `/executions/{id}` | Get execution status |
+| `GET` | `/executions` | List executions |
+| `POST` | `/executions/{id}/cancel` | Cancel execution |
+
+### Memory
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/memory/{key}` | Get memory value |
+| `PUT` | `/memory/{key}` | Set memory value |
+| `DELETE` | `/memory/{key}` | Delete memory value |
+
+### Tools
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/tools` | List available tools |
+| `GET` | `/tools/{name}` | Get tool details |
+| `POST` | `/tools/{name}/connect` | Connect a tool |
+
+## Request Format
+
+All requests should include:
+
+```bash
+Content-Type: application/json
+Authorization: Bearer YOUR_API_KEY
+```
+
+## Response Format
+
+Successful responses return JSON:
+
+```json
+{
+  "data": { ... },
+  "meta": {
+    "request_id": "req_abc123"
+  }
+}
+```
+
+Error responses:
+
+```json
+{
+  "error": {
+    "code": "validation_error",
+    "message": "Invalid input",
+    "details": [...]
+  }
+}
+```
+
+## Rate Limits
+
+| Plan | Requests/minute | Requests/day |
+|------|-----------------|--------------|
+| Free | 60 | 1,000 |
+| Pro | 300 | 50,000 |
+| Enterprise | Custom | Custom |
+
+Rate limit headers are included in responses:
+
+```
+X-RateLimit-Limit: 60
+X-RateLimit-Remaining: 45
+X-RateLimit-Reset: 1706054400
+```
+
+## SDKs
+
+We recommend using our official SDKs:
+
+- **Python**: `pip install fibonacci-sdk`
+- **Node.js**: `npm install @fibonacci/sdk` (coming soon)
+
+## Example: Execute a Workflow
+
+```bash
+curl -X POST https://api.fibonacci.dev/v1/workflows/my-workflow/execute \
+  -H "Authorization: Bearer YOUR_API_KEY" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "inputs": {
+      "text": "Analyze this text"
+    }
+  }'
+```
+
+Response:
+
+```json
+{
+  "data": {
+    "execution_id": "exec_abc123",
+    "status": "completed",
+    "outputs": {
+      "analyzer": "The text sentiment is positive..."
+    },
+    "duration_ms": 1523
+  }
+}
+```

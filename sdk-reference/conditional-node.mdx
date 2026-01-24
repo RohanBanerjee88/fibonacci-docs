@@ -1,0 +1,451 @@
+---
+title: 'ConditionalNode'
+description: 'Node for branching logic and conditional execution'
+---
+
+The `ConditionalNode` class enables conditional branching in workflows, routing execution to different nodes based on runtime conditions.
+
+## Constructor
+
+```python
+from fibonacci import ConditionalNode
+
+node = ConditionalNode(
+    id="router",
+    conditions=[
+        {
+            "if": {"field": "{{sentiment}}", "operator": "equals", "value": "positive"},
+            "then": "positive_handler"
+        },
+        {
+            "if": {"field": "{{sentiment}}", "operator": "equals", "value": "negative"},
+            "then": "negative_handler"
+        }
+    ],
+    default="neutral_handler"
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `id` | `str` | Required | Unique node identifier |
+| `conditions` | `list[dict]` | Required | List of condition-action pairs |
+| `default` | `str` | `None` | Default node if no conditions match |
+| `dependencies` | `list[str]` | `[]` | Nodes this depends on |
+
+## Condition Structure
+
+Each condition has an `if` clause and a `then` action:
+
+```python
+{
+    "if": {
+        "field": "{{source.field}}",     # Value to evaluate
+        "operator": "equals",             # Comparison operator
+        "value": "expected_value"         # Value to compare against
+    },
+    "then": "target_node_id"              # Node to execute if true
+}
+```
+
+## Operators
+
+| Operator | Description | Example |
+|----------|-------------|---------|
+| `equals` | Exact match | `"positive"` equals `"positive"` |
+| `not_equals` | Not equal | `"spam"` not_equals `"ham"` |
+| `contains` | String contains | `"hello world"` contains `"world"` |
+| `not_contains` | String doesn't contain | `"hello"` not_contains `"bye"` |
+| `starts_with` | String prefix | `"hello"` starts_with `"hel"` |
+| `ends_with` | String suffix | `"hello"` ends_with `"llo"` |
+| `greater_than` | Numeric greater | `10` greater_than `5` |
+| `less_than` | Numeric less | `5` less_than `10` |
+| `greater_than_or_equals` | >= comparison | `10` >= `10` |
+| `less_than_or_equals` | <= comparison | `5` <= `10` |
+| `is_empty` | Empty/null check | `""` is_empty |
+| `is_not_empty` | Not empty check | `"text"` is_not_empty |
+| `in` | Value in list | `"a"` in `["a", "b", "c"]` |
+| `not_in` | Value not in list | `"d"` not_in `["a", "b", "c"]` |
+| `matches` | Regex match | `"test@email.com"` matches `".*@.*\\.com"` |
+
+## Basic Examples
+
+### Simple Branching
+
+```python
+from fibonacci import Workflow, LLMNode, ConditionalNode
+
+workflow = Workflow(name="sentiment-router")
+
+# Analyze sentiment
+analyzer = LLMNode(
+    id="sentiment",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Classify sentiment as positive/negative/neutral: {{input.text}}"
+)
+
+# Route based on sentiment
+router = ConditionalNode(
+    id="router",
+    conditions=[
+        {
+            "if": {"field": "{{sentiment}}", "operator": "contains", "value": "positive"},
+            "then": "positive_response"
+        },
+        {
+            "if": {"field": "{{sentiment}}", "operator": "contains", "value": "negative"},
+            "then": "negative_response"
+        }
+    ],
+    default="neutral_response",
+    dependencies=["sentiment"]
+)
+
+# Handler nodes
+positive = LLMNode(
+    id="positive_response",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Generate an enthusiastic response to: {{input.text}}"
+)
+
+negative = LLMNode(
+    id="negative_response",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Generate an empathetic response to: {{input.text}}"
+)
+
+neutral = LLMNode(
+    id="neutral_response",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Generate a helpful response to: {{input.text}}"
+)
+```
+
+### Numeric Comparison
+
+```python
+router = ConditionalNode(
+    id="score_router",
+    conditions=[
+        {
+            "if": {"field": "{{analyzer.score}}", "operator": "greater_than_or_equals", "value": 90},
+            "then": "excellent_handler"
+        },
+        {
+            "if": {"field": "{{analyzer.score}}", "operator": "greater_than_or_equals", "value": 70},
+            "then": "good_handler"
+        },
+        {
+            "if": {"field": "{{analyzer.score}}", "operator": "greater_than_or_equals", "value": 50},
+            "then": "average_handler"
+        }
+    ],
+    default="needs_improvement_handler",
+    dependencies=["analyzer"]
+)
+```
+
+### String Matching
+
+```python
+router = ConditionalNode(
+    id="category_router",
+    conditions=[
+        {
+            "if": {"field": "{{input.email}}", "operator": "ends_with", "value": "@company.com"},
+            "then": "internal_handler"
+        },
+        {
+            "if": {"field": "{{input.email}}", "operator": "matches", "value": ".*@(gmail|yahoo|hotmail)\\.com"},
+            "then": "personal_handler"
+        }
+    ],
+    default="external_handler"
+)
+```
+
+## Multiple Conditions
+
+### AND Logic
+
+Chain nodes to create AND conditions:
+
+```python
+# First check
+check_sentiment = ConditionalNode(
+    id="check_sentiment",
+    conditions=[
+        {
+            "if": {"field": "{{analyzer.sentiment}}", "operator": "equals", "value": "negative"},
+            "then": "check_urgency"
+        }
+    ],
+    default="standard_response",
+    dependencies=["analyzer"]
+)
+
+# Second check (AND condition)
+check_urgency = ConditionalNode(
+    id="check_urgency",
+    conditions=[
+        {
+            "if": {"field": "{{analyzer.urgency}}", "operator": "equals", "value": "high"},
+            "then": "escalate"  # Both negative AND high urgency
+        }
+    ],
+    default="standard_negative_response",
+    dependencies=["analyzer"]
+)
+```
+
+### OR Logic
+
+Multiple conditions pointing to the same target:
+
+```python
+router = ConditionalNode(
+    id="escalation_router",
+    conditions=[
+        # Escalate if sentiment is negative OR urgency is critical
+        {
+            "if": {"field": "{{analyzer.sentiment}}", "operator": "equals", "value": "negative"},
+            "then": "escalate"
+        },
+        {
+            "if": {"field": "{{analyzer.urgency}}", "operator": "equals", "value": "critical"},
+            "then": "escalate"
+        },
+        {
+            "if": {"field": "{{analyzer.category}}", "operator": "equals", "value": "complaint"},
+            "then": "escalate"
+        }
+    ],
+    default="normal_flow",
+    dependencies=["analyzer"]
+)
+```
+
+## Nested Routing
+
+Create complex decision trees:
+
+```python
+# Level 1: Route by category
+category_router = ConditionalNode(
+    id="category_router",
+    conditions=[
+        {
+            "if": {"field": "{{classifier.category}}", "operator": "equals", "value": "technical"},
+            "then": "technical_router"
+        },
+        {
+            "if": {"field": "{{classifier.category}}", "operator": "equals", "value": "billing"},
+            "then": "billing_router"
+        }
+    ],
+    default="general_support",
+    dependencies=["classifier"]
+)
+
+# Level 2: Route technical issues by severity
+technical_router = ConditionalNode(
+    id="technical_router",
+    conditions=[
+        {
+            "if": {"field": "{{classifier.severity}}", "operator": "equals", "value": "critical"},
+            "then": "critical_tech_support"
+        },
+        {
+            "if": {"field": "{{classifier.severity}}", "operator": "equals", "value": "high"},
+            "then": "high_tech_support"
+        }
+    ],
+    default="standard_tech_support",
+    dependencies=["classifier"]
+)
+```
+
+## Common Patterns
+
+### A/B Testing
+
+```python
+import random
+
+router = ConditionalNode(
+    id="ab_test",
+    conditions=[
+        {
+            "if": {"field": "{{input.user_id}}", "operator": "matches", "value": "^[0-4]"},
+            "then": "variant_a"  # 50% of users (IDs starting with 0-4)
+        }
+    ],
+    default="variant_b"  # Other 50%
+)
+```
+
+### Error Handling
+
+```python
+router = ConditionalNode(
+    id="error_router",
+    conditions=[
+        {
+            "if": {"field": "{{api_call.status}}", "operator": "equals", "value": "success"},
+            "then": "process_result"
+        },
+        {
+            "if": {"field": "{{api_call.error}}", "operator": "contains", "value": "rate_limit"},
+            "then": "retry_with_backoff"
+        },
+        {
+            "if": {"field": "{{api_call.error}}", "operator": "contains", "value": "auth"},
+            "then": "refresh_auth"
+        }
+    ],
+    default="log_error",
+    dependencies=["api_call"]
+)
+```
+
+### Feature Flags
+
+```python
+router = ConditionalNode(
+    id="feature_flag",
+    conditions=[
+        {
+            "if": {"field": "{{input.features}}", "operator": "contains", "value": "new_ui"},
+            "then": "new_ui_handler"
+        },
+        {
+            "if": {"field": "{{input.user_tier}}", "operator": "equals", "value": "beta"},
+            "then": "beta_handler"
+        }
+    ],
+    default="standard_handler"
+)
+```
+
+## YAML Configuration
+
+```yaml
+nodes:
+  - id: router
+    type: conditional
+    conditions:
+      - if:
+          field: "{{analyzer.sentiment}}"
+          operator: equals
+          value: "positive"
+        then: positive_handler
+      - if:
+          field: "{{analyzer.sentiment}}"
+          operator: equals
+          value: "negative"
+        then: negative_handler
+    default: neutral_handler
+    dependencies:
+      - analyzer
+```
+
+## Complete Example
+
+```python
+from fibonacci import Workflow, LLMNode, ToolNode, ConditionalNode
+
+workflow = Workflow(name="support-router")
+
+# Classify incoming message
+classifier = LLMNode(
+    id="classifier",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""Classify this support message:
+{{input.message}}
+
+Return JSON:
+{
+    "category": "technical|billing|general|complaint",
+    "urgency": "low|medium|high|critical",
+    "sentiment": "positive|negative|neutral"
+}""",
+    output_format="json"
+)
+
+# Main router
+main_router = ConditionalNode(
+    id="main_router",
+    conditions=[
+        {
+            "if": {"field": "{{classifier.urgency}}", "operator": "equals", "value": "critical"},
+            "then": "emergency_escalation"
+        },
+        {
+            "if": {"field": "{{classifier.category}}", "operator": "equals", "value": "complaint"},
+            "then": "complaint_handler"
+        },
+        {
+            "if": {"field": "{{classifier.category}}", "operator": "equals", "value": "technical"},
+            "then": "tech_support"
+        },
+        {
+            "if": {"field": "{{classifier.category}}", "operator": "equals", "value": "billing"},
+            "then": "billing_support"
+        }
+    ],
+    default="general_support",
+    dependencies=["classifier"]
+)
+
+# Emergency escalation
+emergency = ToolNode(
+    id="emergency_escalation",
+    tool="slack.post_message",
+    inputs={
+        "channel": "#urgent-support",
+        "message": "🚨 CRITICAL: {{input.message}}"
+    }
+)
+
+# Complaint handler
+complaint = LLMNode(
+    id="complaint_handler",
+    model="claude-sonnet-4-5-20250929",
+    prompt="""Handle this complaint with empathy:
+{{input.message}}
+
+Acknowledge the issue, apologize, and offer resolution."""
+)
+
+# Tech support
+tech = LLMNode(
+    id="tech_support",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Provide technical assistance for: {{input.message}}"
+)
+
+# Billing support
+billing = LLMNode(
+    id="billing_support",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Address this billing inquiry: {{input.message}}"
+)
+
+# General support
+general = LLMNode(
+    id="general_support",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Provide helpful response to: {{input.message}}"
+)
+
+# Add all nodes
+for node in [classifier, main_router, emergency, complaint, tech, billing, general]:
+    workflow.add_node(node)
+
+# Execute
+result = workflow.execute(inputs={
+    "message": "My payment failed and I can't access my account!"
+})
+```

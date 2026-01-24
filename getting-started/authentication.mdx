@@ -1,0 +1,289 @@
+---
+title: "Authentication"
+description: "Configure API keys and secure credential storage"
+---
+
+## Getting Your API Key
+
+<Steps>
+  <Step title="Sign Up">
+    Create an account at [fibonacci.today](https://fibonacci.today/signup)
+  </Step>
+  <Step title="Navigate to API Keys">
+    Go to your [Dashboard](https://app.fibonacci.today) → Settings → API Keys
+  </Step>
+  <Step title="Generate a Key">
+    Click "Create New Key" and give it a descriptive name
+  </Step>
+  <Step title="Copy Your Key">
+    Copy the key immediately - it won't be shown again!
+  </Step>
+</Steps>
+
+<Warning>
+  API keys start with `fib_live_` (production) or `fib_test_` (sandbox). Keep them secure and never share them publicly.
+</Warning>
+
+## Authentication Methods
+
+Fibonacci supports multiple ways to provide your API key, in order of security:
+
+| Method | Security Level | Best For |
+|--------|---------------|----------|
+| System Keychain | 🔐 Highest | Production environments |
+| Environment Variable | 🔒 High | CI/CD, containers |
+| `.env` File | ⚠️ Medium | Local development |
+| Direct Parameter | ❌ Low | Testing only |
+
+---
+
+## Method 1: System Keychain (Recommended)
+
+The most secure option. Your API key is encrypted by the operating system.
+
+### Save to Keychain
+
+```python
+from fibonacci import save_api_key_secure
+
+# Save once - it's stored encrypted
+save_api_key_secure("fib_live_your_api_key_here")
+```
+
+### Use in Your Code
+
+```python
+from fibonacci import Workflow, get_config_secure
+
+# Automatically loads from keychain
+config = get_config_secure()
+
+wf = Workflow(name="My Workflow", config=config)
+wf.deploy()  # Uses keychain API key
+```
+
+### Supported Platforms
+
+| Platform | Backend |
+|----------|---------|
+| macOS | Keychain Services |
+| Windows | Credential Manager |
+| Linux | Secret Service (GNOME Keyring, KWallet) |
+
+### Check Security Status
+
+```python
+from fibonacci import check_security_status
+
+status = check_security_status()
+print(f"Security Level: {status['security_level']}")
+print(f"API Key Location: {'Keychain' if status['api_key_in_keychain'] else 'Environment'}")
+```
+
+### CLI: Manage Credentials
+
+```bash
+# Save API key interactively
+fibonacci security save
+
+# Check security status
+fibonacci security status
+
+# Migrate from .env to keychain
+fibonacci security migrate
+```
+
+---
+
+## Method 2: Environment Variable
+
+Good for CI/CD pipelines and containerized deployments.
+
+### Set the Variable
+
+<CodeGroup>
+
+```bash Linux/macOS
+export FIBONACCI_API_KEY=fib_live_your_api_key_here
+```
+
+```powershell Windows PowerShell
+$env:FIBONACCI_API_KEY = "fib_live_your_api_key_here"
+```
+
+```yaml GitHub Actions
+env:
+  FIBONACCI_API_KEY: ${{ secrets.FIBONACCI_API_KEY }}
+```
+
+```yaml Docker
+environment:
+  - FIBONACCI_API_KEY=fib_live_your_api_key_here
+```
+
+</CodeGroup>
+
+### Use in Your Code
+
+```python
+from fibonacci import Workflow
+from fibonacci.config import Config
+
+# Automatically loads from environment
+config = Config.from_env()
+
+wf = Workflow(name="My Workflow", config=config)
+```
+
+---
+
+## Method 3: `.env` File
+
+Convenient for local development. **Never commit to version control.**
+
+### Create `.env` File
+
+```bash .env
+FIBONACCI_API_KEY=fib_live_your_api_key_here
+FIBONACCI_BASE_URL=https://api.fibonacci.ai
+FIBONACCI_TIMEOUT=300
+FIBONACCI_DEBUG=false
+```
+
+### Add to `.gitignore`
+
+```bash .gitignore
+# API Keys - Never commit!
+.env
+.env.local
+.env.*.local
+```
+
+### Use in Your Code
+
+```python
+from dotenv import load_dotenv
+from fibonacci import Workflow
+from fibonacci.config import Config
+
+load_dotenv()  # Load .env file
+
+config = Config.from_env()
+wf = Workflow(name="My Workflow", config=config)
+```
+
+---
+
+## Method 4: Direct Parameter
+
+Only use for quick testing. **Never use in production code.**
+
+```python
+# ⚠️ Warning: Only for testing!
+wf.deploy(api_key="fib_live_your_api_key_here")
+```
+
+---
+
+## Configuration Options
+
+All available configuration options:
+
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `FIBONACCI_API_KEY` | - | Your API key (required) |
+| `FIBONACCI_BASE_URL` | `https://api.fibonacci.ai` | API endpoint |
+| `FIBONACCI_TIMEOUT` | `300` | Request timeout in seconds |
+| `FIBONACCI_MAX_RETRIES` | `3` | Max retry attempts |
+| `FIBONACCI_VERIFY_SSL` | `true` | Verify SSL certificates |
+| `FIBONACCI_DEBUG` | `false` | Enable debug logging |
+| `FIBONACCI_LOG_REQUESTS` | `false` | Log API requests |
+| `FIBONACCI_LOG_RESPONSES` | `false` | Log API responses |
+
+### Programmatic Configuration
+
+```python
+from fibonacci.config import Config
+
+config = Config(
+    api_key="fib_live_xxx",
+    base_url="https://api.fibonacci.ai",
+    timeout=300,
+    max_retries=3,
+    verify_ssl=True,
+    debug=False
+)
+```
+
+---
+
+## Migrating to Secure Storage
+
+If you're currently using a `.env` file, migrate to keychain storage:
+
+### Option 1: CLI
+
+```bash
+fibonacci security migrate
+```
+
+### Option 2: Python
+
+```python
+from fibonacci import migrate_to_keychain
+
+if migrate_to_keychain():
+    print("✅ Migrated! You can now delete FIBONACCI_API_KEY from .env")
+else:
+    print("❌ Migration failed")
+```
+
+---
+
+## Verifying Authentication
+
+Test that your API key works:
+
+```python
+from fibonacci import FibonacciClient
+from fibonacci.config import Config
+
+config = Config.from_env()
+
+async def test_auth():
+    async with FibonacciClient(config) as client:
+        workflows = await client.list_workflows()
+        print(f"✅ Authenticated! Found {len(workflows)} workflows")
+
+import asyncio
+asyncio.run(test_auth())
+```
+
+Or use the CLI:
+
+```bash
+fibonacci list
+```
+
+<Check>
+  If you see your workflows listed, authentication is working correctly!
+</Check>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Build Your First Workflow"
+    icon="code"
+    href="/getting-started/your-first-workflow"
+  >
+    Start building with Fibonacci
+  </Card>
+  <Card
+    title="Security Best Practices"
+    icon="shield"
+    href="/guides/security"
+  >
+    Learn more about securing your workflows
+  </Card>
+</CardGroup>

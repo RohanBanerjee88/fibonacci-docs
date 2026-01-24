@@ -1,0 +1,562 @@
+---
+title: 'YAML Workflows'
+description: 'Define workflows declaratively using YAML configuration files'
+---
+
+YAML workflows let you define Fibonacci workflows in a declarative format, separating workflow structure from application code. This approach is ideal for version control, code review, and non-developer workflow authoring.
+
+## Basic Structure
+
+A YAML workflow file defines the complete workflow configuration:
+
+```yaml
+name: text-analyzer
+description: Analyze text sentiment and extract key themes
+version: "1.0"
+
+nodes:
+  - id: sentiment
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: |
+      Analyze the sentiment of this text:
+      {{input.text}}
+      
+      Return: positive, negative, or neutral
+
+  - id: themes
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: |
+      Extract key themes from this text:
+      {{input.text}}
+      
+      Return as a comma-separated list.
+    dependencies:
+      - sentiment
+
+outputs:
+  sentiment: "{{sentiment}}"
+  themes: "{{themes}}"
+```
+
+## Loading YAML Workflows
+
+### From File
+
+```python
+from fibonacci import Workflow
+
+# Load from file
+workflow = Workflow.from_yaml("workflows/text-analyzer.yaml")
+
+# Execute
+result = workflow.execute(inputs={"text": "I love this product!"})
+print(result)
+```
+
+### From String
+
+```python
+from fibonacci import Workflow
+
+yaml_content = """
+name: quick-summary
+nodes:
+  - id: summarize
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: "Summarize: {{input.text}}"
+"""
+
+workflow = Workflow.from_yaml_string(yaml_content)
+```
+
+### From URL
+
+```python
+from fibonacci import Workflow
+
+# Load from remote URL
+workflow = Workflow.from_yaml_url(
+    "https://example.com/workflows/analyzer.yaml"
+)
+```
+
+## Node Types
+
+### LLM Nodes
+
+```yaml
+nodes:
+  - id: writer
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: |
+      Write a {{input.style}} paragraph about {{input.topic}}.
+    temperature: 0.7
+    max_tokens: 500
+    
+  - id: structured_output
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: "Extract entities from: {{input.text}}"
+    output_format: json
+    schema:
+      type: object
+      properties:
+        people:
+          type: array
+          items:
+            type: string
+        places:
+          type: array
+          items:
+            type: string
+```
+
+### Tool Nodes
+
+```yaml
+nodes:
+  - id: fetch_data
+    type: tool
+    tool: google_sheets.read_range
+    inputs:
+      spreadsheet_id: "{{input.sheet_id}}"
+      range: "A1:D100"
+      
+  - id: send_notification
+    type: tool
+    tool: slack.post_message
+    inputs:
+      channel: "#alerts"
+      message: "Analysis complete: {{analyzer}}"
+    dependencies:
+      - analyzer
+```
+
+### Conditional Nodes
+
+```yaml
+nodes:
+  - id: route_by_sentiment
+    type: conditional
+    conditions:
+      - if:
+          field: "{{sentiment}}"
+          operator: equals
+          value: "positive"
+        then: positive_handler
+      - if:
+          field: "{{sentiment}}"
+          operator: equals
+          value: "negative"
+        then: negative_handler
+    default: neutral_handler
+    dependencies:
+      - sentiment
+```
+
+### Critic Nodes
+
+```yaml
+nodes:
+  - id: quality_check
+    type: critic
+    model: claude-sonnet-4-5-20250929
+    target_node: writer
+    criteria:
+      - "Content is factually accurate"
+      - "Tone matches requested style"
+      - "Length is appropriate"
+    min_score: 7
+    max_iterations: 3
+```
+
+## Advanced Configuration
+
+### Variables and Secrets
+
+Use environment variables and secrets in YAML:
+
+```yaml
+name: secure-workflow
+version: "1.0"
+
+# Reference environment variables
+env:
+  API_ENDPOINT: ${API_ENDPOINT}
+  DEFAULT_MODEL: ${FIBONACCI_MODEL:-claude-sonnet-4-5-20250929}
+
+# Reference secrets (from secure storage)
+secrets:
+  - OPENAI_API_KEY
+  - DATABASE_URL
+
+nodes:
+  - id: fetch
+    type: tool
+    tool: http.request
+    inputs:
+      url: "{{env.API_ENDPOINT}}/data"
+      headers:
+        Authorization: "Bearer {{secrets.API_KEY}}"
+```
+
+### Retry Configuration
+
+```yaml
+nodes:
+  - id: unreliable_api
+    type: tool
+    tool: http.request
+    inputs:
+      url: "https://api.example.com/data"
+    retry:
+      max_attempts: 3
+      delay: 1.0
+      backoff: exponential
+      max_delay: 30.0
+      retry_on:
+        - timeout
+        - 5xx
+```
+
+### Memory Configuration
+
+```yaml
+name: stateful-workflow
+
+memory:
+  backend: redis
+  connection: ${REDIS_URL}
+  key_prefix: "myapp:"
+
+nodes:
+  - id: chatbot
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: |
+      Conversation history:
+      {{memory.history}}
+      
+      User: {{input.message}}
+    memory_read:
+      - history
+    memory_write:
+      key: last_response
+      scope: user
+```
+
+### Timeouts
+
+```yaml
+nodes:
+  - id: long_analysis
+    type: llm
+    model: claude-opus-4-5-20251101
+    prompt: "Deep analysis of: {{input.data}}"
+    timeout: 120  # seconds
+    
+  - id: quick_check
+    type: tool
+    tool: http.request
+    inputs:
+      url: "https://api.example.com/health"
+    timeout: 5
+```
+
+## Workflow Composition
+
+### Including Other Workflows
+
+```yaml
+name: master-pipeline
+version: "1.0"
+
+includes:
+  - path: ./preprocessing.yaml
+    as: preprocess
+  - path: ./analysis.yaml
+    as: analyze
+  - path: ./reporting.yaml
+    as: report
+
+nodes:
+  - id: run_preprocess
+    type: workflow
+    workflow: preprocess
+    inputs:
+      data: "{{input.raw_data}}"
+      
+  - id: run_analysis
+    type: workflow
+    workflow: analyze
+    inputs:
+      clean_data: "{{run_preprocess.output}}"
+    dependencies:
+      - run_preprocess
+      
+  - id: run_report
+    type: workflow
+    workflow: report
+    inputs:
+      results: "{{run_analysis}}"
+    dependencies:
+      - run_analysis
+```
+
+### Parallel Execution
+
+```yaml
+name: parallel-analysis
+version: "1.0"
+
+nodes:
+  # These run in parallel (no dependencies between them)
+  - id: sentiment_analysis
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: "Analyze sentiment: {{input.text}}"
+    
+  - id: entity_extraction
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: "Extract entities: {{input.text}}"
+    
+  - id: topic_classification
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: "Classify topics: {{input.text}}"
+    
+  # This waits for all parallel nodes
+  - id: combine_results
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: |
+      Combine these analysis results:
+      Sentiment: {{sentiment_analysis}}
+      Entities: {{entity_extraction}}
+      Topics: {{topic_classification}}
+    dependencies:
+      - sentiment_analysis
+      - entity_extraction
+      - topic_classification
+```
+
+## Validation
+
+### Schema Validation
+
+Fibonacci validates YAML workflows against a JSON Schema:
+
+```python
+from fibonacci import Workflow, WorkflowValidationError
+
+try:
+    workflow = Workflow.from_yaml("workflow.yaml")
+except WorkflowValidationError as e:
+    print(f"Validation errors: {e.errors}")
+```
+
+### CLI Validation
+
+```bash
+# Validate a workflow file
+fibonacci validate workflow.yaml
+
+# Validate with verbose output
+fibonacci validate workflow.yaml --verbose
+
+# Validate all workflows in a directory
+fibonacci validate workflows/
+```
+
+### Custom Validation Rules
+
+```yaml
+name: validated-workflow
+version: "1.0"
+
+validation:
+  require_descriptions: true
+  max_nodes: 20
+  allowed_models:
+    - claude-sonnet-4-5-20250929
+    - claude-haiku-4-5-20251001
+  forbidden_tools:
+    - http.request  # Require specific API tools instead
+
+nodes:
+  - id: analyzer
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    description: "Analyzes input text for sentiment"  # Required
+    prompt: "Analyze: {{input.text}}"
+```
+
+## Complete Example
+
+Here's a full production workflow example:
+
+```yaml
+name: customer-support-router
+description: Routes customer inquiries to appropriate handlers
+version: "2.1"
+author: support-team@company.com
+
+env:
+  SLACK_CHANNEL: ${SUPPORT_SLACK_CHANNEL:-#support}
+  ESCALATION_THRESHOLD: ${ESCALATION_THRESHOLD:-0.8}
+
+memory:
+  backend: redis
+  connection: ${REDIS_URL}
+
+nodes:
+  # Classify the inquiry
+  - id: classify
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: |
+      Classify this customer inquiry:
+      {{input.message}}
+      
+      Categories: billing, technical, general, complaint
+      Urgency: low, medium, high, critical
+      
+      Return JSON: {"category": "...", "urgency": "..."}
+    output_format: json
+    timeout: 30
+
+  # Check for escalation triggers
+  - id: check_escalation
+    type: conditional
+    conditions:
+      - if:
+          field: "{{classify.urgency}}"
+          operator: equals
+          value: "critical"
+        then: escalate_immediately
+      - if:
+          field: "{{classify.category}}"
+          operator: equals
+          value: "complaint"
+        then: complaint_handler
+    default: standard_response
+    dependencies:
+      - classify
+
+  # Generate standard response
+  - id: standard_response
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: |
+      Previous interactions:
+      {{memory.customer_history}}
+      
+      Customer inquiry ({{classify.category}}):
+      {{input.message}}
+      
+      Provide a helpful response.
+    memory_read:
+      - customer_history
+    dependencies:
+      - classify
+
+  # Handle complaints specially
+  - id: complaint_handler
+    type: llm
+    model: claude-sonnet-4-5-20250929
+    prompt: |
+      Handle this complaint with empathy:
+      {{input.message}}
+      
+      Previous issues:
+      {{memory.customer_history}}
+      
+      Acknowledge concerns and offer resolution.
+    memory_read:
+      - customer_history
+    temperature: 0.3  # More consistent tone
+    dependencies:
+      - classify
+
+  # Immediate escalation
+  - id: escalate_immediately
+    type: tool
+    tool: slack.post_message
+    inputs:
+      channel: "{{env.SLACK_CHANNEL}}"
+      message: |
+        🚨 CRITICAL ESCALATION
+        Customer: {{input.customer_id}}
+        Category: {{classify.category}}
+        Message: {{input.message}}
+    dependencies:
+      - classify
+
+  # Log interaction
+  - id: log_interaction
+    type: tool
+    tool: database.insert
+    inputs:
+      table: support_interactions
+      data:
+        customer_id: "{{input.customer_id}}"
+        category: "{{classify.category}}"
+        urgency: "{{classify.urgency}}"
+        timestamp: "{{now}}"
+    dependencies:
+      - classify
+
+outputs:
+  response: "{{standard_response || complaint_handler}}"
+  category: "{{classify.category}}"
+  urgency: "{{classify.urgency}}"
+  escalated: "{{escalate_immediately != null}}"
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Use version control">
+    Store YAML workflows in Git for change tracking, code review, and rollback capabilities.
+  </Accordion>
+
+  <Accordion title="Separate environments">
+    Use environment variables for configuration that differs between dev/staging/production:
+    ```yaml
+    env:
+      API_URL: ${API_URL}
+      MODEL: ${MODEL:-claude-sonnet-4-5-20250929}
+    ```
+  </Accordion>
+
+  <Accordion title="Document your workflows">
+    Add descriptions to workflows and nodes:
+    ```yaml
+    name: my-workflow
+    description: |
+      This workflow processes customer feedback.
+      Author: team@company.com
+      Last updated: 2025-01-15
+    ```
+  </Accordion>
+
+  <Accordion title="Validate before deployment">
+    Always run `fibonacci validate` in CI/CD pipelines before deploying workflow changes.
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="CLI Guide" icon="terminal" href="/guides/cli">
+    Learn the Fibonacci command-line interface
+  </Card>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Production workflow patterns
+  </Card>
+</CardGroup>

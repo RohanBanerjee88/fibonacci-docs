@@ -1,0 +1,157 @@
+---
+title: "Fibonacci SDK"
+description: "Build and deploy AI-powered workflows programmatically with enterprise-grade security"
+---
+
+<img
+  className="block dark:hidden"
+  src="/images/hero-light.png"
+  alt="Fibonacci SDK Hero"
+/>
+<img
+  className="hidden dark:block"
+  src="/images/hero-dark.png"
+  alt="Fibonacci SDK Hero"
+/>
+
+## Welcome to Fibonacci
+
+Fibonacci is the **Cursor for SaaS tools** - a powerful Python SDK that lets you build, deploy, and execute AI-powered workflows that orchestrate your favorite tools and services.
+
+<CardGroup cols={2}>
+  <Card
+    title="Quickstart"
+    icon="rocket"
+    href="/getting-started/quickstart"
+  >
+    Get up and running with Fibonacci in under 5 minutes
+  </Card>
+  <Card
+    title="Your First Workflow"
+    icon="code"
+    href="/getting-started/your-first-workflow"
+  >
+    Build your first AI workflow step-by-step
+  </Card>
+  <Card
+    title="SDK Reference"
+    icon="book"
+    href="/sdk-reference/overview"
+  >
+    Complete reference for all SDK classes and methods
+  </Card>
+  <Card
+    title="API Reference"
+    icon="server"
+    href="/api-reference/overview"
+  >
+    REST API documentation for direct integrations
+  </Card>
+</CardGroup>
+
+## Why Fibonacci?
+
+<AccordionGroup>
+  <Accordion title="🤖 AI-Native Workflows" icon="brain">
+    Built from the ground up for LLM-powered automation. Our LLM nodes seamlessly integrate with Claude and other models to analyze, generate, and transform data.
+  </Accordion>
+  
+  <Accordion title="🔧 100+ Tool Integrations" icon="plug">
+    Connect to Google Sheets, Slack, Notion, Salesforce, and dozens more. Execute real actions across your entire tool stack.
+  </Accordion>
+  
+  <Accordion title="🔐 Enterprise Security" icon="shield">
+    Secure keychain storage, comprehensive audit logging, and API key redaction. Built for teams that take security seriously.
+  </Accordion>
+  
+  <Accordion title="📝 Code-First & YAML" icon="file-code">
+    Define workflows programmatically in Python or declaratively in YAML. Version control your automation like any other code.
+  </Accordion>
+</AccordionGroup>
+
+## Quick Example
+
+Here's a simple workflow that reads data from Google Sheets and generates an analysis:
+
+```python
+from fibonacci import Workflow, LLMNode, ToolNode
+
+# Create a workflow
+wf = Workflow(
+    name="Sales Analysis",
+    description="Analyze sales data from Google Sheets"
+)
+
+# Read data from Google Sheets
+read_data = ToolNode(
+    id="read_sales",
+    name="Read Sales Data",
+    tool="google_sheets_read",
+    params={"spreadsheet_id": "{{input.sheet_id}}"}
+)
+
+# Analyze with AI
+analyze = LLMNode(
+    id="analyze",
+    name="Generate Analysis",
+    instruction="""
+    Analyze this sales data and provide:
+    1. Key trends
+    2. Top performers
+    3. Areas for improvement
+    
+    Data: {{read_sales}}
+    """,
+    dependencies=["read_sales"]
+)
+
+# Add nodes and deploy
+wf.add_nodes([read_data, analyze])
+workflow_id = wf.deploy(api_key="fib_live_xxx")
+
+# Execute
+result = wf.run(input_data={"sheet_id": "abc123"})
+print(result.output_data["analyze"])
+```
+
+## What Can You Build?
+
+<CardGroup cols={3}>
+  <Card title="Data Pipelines" icon="database">
+    ETL workflows that extract, transform, and load data across services
+  </Card>
+  <Card title="AI Agents" icon="robot">
+    Autonomous agents that research, analyze, and take action
+  </Card>
+  <Card title="Report Generation" icon="chart-line">
+    Automated reports that pull data and generate insights
+  </Card>
+  <Card title="Content Creation" icon="pen">
+    AI-powered content workflows with human-in-the-loop
+  </Card>
+  <Card title="Customer Support" icon="headset">
+    Intelligent ticket routing and response generation
+  </Card>
+  <Card title="Sales Automation" icon="handshake">
+    Lead scoring, outreach, and CRM automation
+  </Card>
+</CardGroup>
+
+## Getting Help
+
+<CardGroup cols={2}>
+  <Card
+    title="Discord Community"
+    icon="discord"
+    href="https://discord.gg/fibonacci"
+  >
+    Join our community for help and discussions
+  </Card>
+  <Card
+    title="GitHub Issues"
+    icon="github"
+    href="https://github.com/fibonacci-ai/fibonacci-sdk/issues"
+  >
+    Report bugs or request features
+  </Card>
+</CardGroup>

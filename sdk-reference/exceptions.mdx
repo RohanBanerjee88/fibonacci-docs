@@ -1,0 +1,466 @@
+---
+title: 'Exceptions'
+description: 'Exception classes for error handling in Fibonacci'
+---
+
+Fibonacci provides a hierarchy of exception classes for precise error handling. All exceptions inherit from `FibonacciError`.
+
+## Exception Hierarchy
+
+```
+FibonacciError
+├── WorkflowError
+│   ├── WorkflowNotFoundError
+│   ├── WorkflowValidationError
+│   └── WorkflowExecutionError
+├── NodeExecutionError
+├── ToolError
+│   ├── ToolNotFoundError
+│   ├── ToolConnectionError
+│   └── ToolExecutionError
+├── ValidationError
+│   ├── InputValidationError
+│   └── OutputValidationError
+├── AuthenticationError
+├── RateLimitError
+├── TimeoutError
+├── MemoryError
+└── ConfigurationError
+```
+
+## FibonacciError
+
+Base exception for all Fibonacci errors.
+
+```python
+from fibonacci.exceptions import FibonacciError
+
+try:
+    result = workflow.execute(inputs=data)
+except FibonacciError as e:
+    print(f"Fibonacci error: {e.message}")
+    print(f"Error code: {e.code}")
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `message` | `str` | Human-readable error message |
+| `code` | `str` | Error code for programmatic handling |
+| `details` | `dict` | Additional error context |
+
+---
+
+## WorkflowError
+
+Errors related to workflow operations.
+
+```python
+from fibonacci.exceptions import WorkflowError
+
+try:
+    workflow.validate()
+except WorkflowError as e:
+    print(f"Workflow error: {e.message}")
+    print(f"Workflow: {e.workflow_name}")
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `workflow_name` | `str` | Name of the affected workflow |
+
+### Subclasses
+
+#### WorkflowNotFoundError
+
+```python
+from fibonacci.exceptions import WorkflowNotFoundError
+
+try:
+    workflow = Workflow.from_yaml("missing.yaml")
+except WorkflowNotFoundError as e:
+    print(f"Workflow not found: {e.path}")
+```
+
+#### WorkflowValidationError
+
+```python
+from fibonacci.exceptions import WorkflowValidationError
+
+try:
+    workflow.validate()
+except WorkflowValidationError as e:
+    print(f"Validation errors: {e.errors}")
+    for error in e.errors:
+        print(f"  - {error['field']}: {error['message']}")
+```
+
+---
+
+## NodeExecutionError
+
+Errors during node execution.
+
+```python
+from fibonacci.exceptions import NodeExecutionError
+
+try:
+    result = workflow.execute(inputs=data)
+except NodeExecutionError as e:
+    print(f"Node '{e.node_id}' failed: {e.message}")
+    print(f"Node type: {e.node_type}")
+    print(f"Input data: {e.input_data}")
+    print(f"Partial results: {e.partial_results}")
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `node_id` | `str` | ID of the failed node |
+| `node_type` | `str` | Type of node (llm, tool, etc.) |
+| `input_data` | `dict` | Input provided to the node |
+| `partial_results` | `dict` | Results from successful nodes |
+| `traceback` | `str` | Full error traceback |
+
+### Example: Handling with Partial Results
+
+```python
+try:
+    result = workflow.execute(inputs=data)
+except NodeExecutionError as e:
+    # Use partial results from successful nodes
+    if "analyzer" in e.partial_results:
+        analysis = e.partial_results["analyzer"]
+        # Continue with degraded functionality
+        return fallback_handler(analysis)
+    raise
+```
+
+---
+
+## ToolError
+
+Errors from tool integrations.
+
+```python
+from fibonacci.exceptions import ToolError
+
+try:
+    result = workflow.execute(inputs=data)
+except ToolError as e:
+    print(f"Tool error: {e.tool_name}")
+    print(f"Operation: {e.operation}")
+    print(f"Details: {e.details}")
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `tool_name` | `str` | Name of the tool |
+| `operation` | `str` | Operation that failed |
+
+### Subclasses
+
+#### ToolNotFoundError
+
+```python
+from fibonacci.exceptions import ToolNotFoundError
+
+try:
+    node = ToolNode(id="test", tool="nonexistent.tool", inputs={})
+except ToolNotFoundError as e:
+    print(f"Tool not found: {e.tool_name}")
+    print(f"Available tools: {e.available_tools}")
+```
+
+#### ToolConnectionError
+
+```python
+from fibonacci.exceptions import ToolConnectionError
+
+try:
+    result = workflow.execute(inputs=data)
+except ToolConnectionError as e:
+    print(f"Failed to connect to {e.tool_name}")
+    print(f"Retry in {e.retry_after} seconds")
+```
+
+#### ToolExecutionError
+
+```python
+from fibonacci.exceptions import ToolExecutionError
+
+try:
+    result = workflow.execute(inputs=data)
+except ToolExecutionError as e:
+    print(f"Tool execution failed: {e.tool_name}")
+    print(f"Response: {e.response}")
+```
+
+---
+
+## ValidationError
+
+Input or output validation failures.
+
+```python
+from fibonacci.exceptions import ValidationError
+
+try:
+    result = workflow.execute(inputs={"text": ""})
+except ValidationError as e:
+    print(f"Validation failed: {e.message}")
+    for error in e.errors:
+        print(f"  - {error['field']}: {error['error']}")
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `errors` | `list[dict]` | List of validation errors |
+
+### Error Format
+
+```python
+{
+    "field": "text",
+    "error": "String too short",
+    "expected": {"minLength": 1},
+    "actual": ""
+}
+```
+
+### Subclasses
+
+#### InputValidationError
+
+```python
+from fibonacci.exceptions import InputValidationError
+
+try:
+    result = workflow.execute(inputs=invalid_data)
+except InputValidationError as e:
+    print(f"Invalid input: {e.errors}")
+```
+
+#### OutputValidationError
+
+```python
+from fibonacci.exceptions import OutputValidationError
+
+try:
+    result = workflow.execute(inputs=data)
+except OutputValidationError as e:
+    print(f"Output didn't match schema: {e.errors}")
+    print(f"Node: {e.node_id}")
+    print(f"Output: {e.output}")
+```
+
+---
+
+## AuthenticationError
+
+Authentication and authorization failures.
+
+```python
+from fibonacci.exceptions import AuthenticationError
+
+try:
+    client = FibonacciClient(api_key="invalid")
+    client.list_workflows()
+except AuthenticationError as e:
+    print(f"Auth failed: {e.message}")
+    print(f"Reason: {e.reason}")  # invalid_key, expired, insufficient_scope
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `reason` | `str` | Specific auth failure reason |
+
+---
+
+## RateLimitError
+
+API rate limit exceeded.
+
+```python
+from fibonacci.exceptions import RateLimitError
+import time
+
+try:
+    result = workflow.execute(inputs=data)
+except RateLimitError as e:
+    print(f"Rate limited: {e.message}")
+    print(f"Retry after: {e.retry_after} seconds")
+    print(f"Limit: {e.limit}")
+    print(f"Remaining: {e.remaining}")
+    
+    # Wait and retry
+    time.sleep(e.retry_after)
+    result = workflow.execute(inputs=data)
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `retry_after` | `int` | Seconds to wait before retry |
+| `limit` | `int` | Rate limit ceiling |
+| `remaining` | `int` | Remaining requests |
+
+---
+
+## TimeoutError
+
+Execution timeout exceeded.
+
+```python
+from fibonacci.exceptions import TimeoutError
+
+try:
+    result = workflow.execute(inputs=data, timeout=30)
+except TimeoutError as e:
+    print(f"Execution timed out after {e.timeout}s")
+    print(f"Elapsed: {e.elapsed}s")
+    print(f"Node: {e.node_id}")  # Node that was running when timeout hit
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `timeout` | `int` | Configured timeout |
+| `elapsed` | `float` | Actual elapsed time |
+| `node_id` | `str` | Node running at timeout |
+
+---
+
+## MemoryError
+
+Memory operation failures.
+
+```python
+from fibonacci.exceptions import MemoryError
+
+try:
+    workflow.memory.set("key", large_data)
+except MemoryError as e:
+    print(f"Memory error: {e.message}")
+    print(f"Operation: {e.operation}")  # get, set, delete
+    print(f"Key: {e.key}")
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `operation` | `str` | Memory operation type |
+| `key` | `str` | Memory key involved |
+
+---
+
+## ConfigurationError
+
+Invalid configuration.
+
+```python
+from fibonacci.exceptions import ConfigurationError
+
+try:
+    workflow = Workflow(
+        name="test",
+        memory_config=MemoryConfig(backend="invalid")
+    )
+except ConfigurationError as e:
+    print(f"Config error: {e.message}")
+    print(f"Field: {e.field}")
+    print(f"Value: {e.value}")
+```
+
+### Attributes
+
+| Attribute | Type | Description |
+|-----------|------|-------------|
+| `field` | `str` | Configuration field |
+| `value` | `Any` | Invalid value |
+
+---
+
+## Comprehensive Error Handling
+
+```python
+from fibonacci import Workflow
+from fibonacci.exceptions import (
+    FibonacciError,
+    NodeExecutionError,
+    ToolError,
+    ValidationError,
+    AuthenticationError,
+    RateLimitError,
+    TimeoutError,
+)
+import time
+import logging
+
+logger = logging.getLogger(__name__)
+
+def execute_with_handling(workflow, inputs, max_retries=3):
+    """Execute workflow with comprehensive error handling."""
+    
+    for attempt in range(max_retries):
+        try:
+            return workflow.execute(inputs=inputs)
+            
+        except ValidationError as e:
+            # Input/output validation - don't retry, fix the data
+            logger.error(f"Validation error: {e.errors}")
+            raise
+            
+        except AuthenticationError as e:
+            # Auth error - don't retry, fix credentials
+            logger.error(f"Authentication failed: {e.reason}")
+            raise
+            
+        except RateLimitError as e:
+            # Rate limited - wait and retry
+            logger.warning(f"Rate limited, waiting {e.retry_after}s")
+            time.sleep(e.retry_after)
+            continue
+            
+        except TimeoutError as e:
+            # Timeout - may retry with longer timeout
+            logger.warning(f"Timeout after {e.elapsed}s at node {e.node_id}")
+            if attempt < max_retries - 1:
+                continue
+            raise
+            
+        except NodeExecutionError as e:
+            # Node failed - log details, maybe use partial results
+            logger.error(f"Node {e.node_id} failed: {e.message}")
+            if e.partial_results:
+                logger.info(f"Partial results available: {list(e.partial_results.keys())}")
+            raise
+            
+        except ToolError as e:
+            # Tool error - may retry for transient issues
+            logger.error(f"Tool {e.tool_name} failed: {e.message}")
+            if attempt < max_retries - 1:
+                time.sleep(2 ** attempt)  # Exponential backoff
+                continue
+            raise
+            
+        except FibonacciError as e:
+            # Catch-all for other Fibonacci errors
+            logger.error(f"Fibonacci error: {e.message}")
+            raise
+    
+    raise RuntimeError(f"Failed after {max_retries} attempts")
+```

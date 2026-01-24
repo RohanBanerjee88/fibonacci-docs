@@ -1,0 +1,571 @@
+---
+title: 'Error Handling'
+description: 'Handle errors gracefully in Fibonacci workflows with retries, fallbacks, and monitoring'
+---
+
+Robust error handling is essential for production workflows. Fibonacci provides multiple mechanisms for handling failures gracefully, from automatic retries to custom error handlers.
+
+## Error Types
+
+Fibonacci defines specific exception types for different error scenarios:
+
+```python
+from fibonacci.exceptions import (
+    FibonacciError,           # Base exception
+    WorkflowError,            # Workflow-level errors
+    NodeExecutionError,       # Node execution failures
+    ToolError,                # Tool integration errors
+    ValidationError,          # Input/output validation
+    AuthenticationError,      # Auth failures
+    RateLimitError,           # API rate limits
+    TimeoutError,             # Execution timeouts
+    MemoryError,              # Memory operations
+    ConfigurationError,       # Invalid configuration
+)
+```
+
+## Basic Error Handling
+
+### Try-Catch Pattern
+
+```python
+from fibonacci import Workflow
+from fibonacci.exceptions import (
+    NodeExecutionError,
+    ToolError,
+    TimeoutError
+)
+
+workflow = Workflow.from_yaml("workflow.yaml")
+
+try:
+    result = workflow.execute(inputs={"text": "Hello"})
+    print(result)
+except NodeExecutionError as e:
+    print(f"Node '{e.node_id}' failed: {e.message}")
+    print(f"Details: {e.details}")
+except ToolError as e:
+    print(f"Tool error: {e.tool_name} - {e.message}")
+except TimeoutError as e:
+    print(f"Execution timed out after {e.timeout}s")
+except FibonacciError as e:
+    print(f"Workflow error: {e}")
+```
+
+### Accessing Error Context
+
+```python
+try:
+    result = workflow.execute(inputs=data)
+except NodeExecutionError as e:
+    # Rich error context
+    print(f"Node ID: {e.node_id}")
+    print(f"Node Type: {e.node_type}")
+    print(f"Input: {e.input_data}")
+    print(f"Error: {e.message}")
+    print(f"Traceback: {e.traceback}")
+    
+    # Partial results from successful nodes
+    print(f"Partial results: {e.partial_results}")
+```
+
+## Retry Configuration
+
+### Node-Level Retries
+
+Configure retries for individual nodes:
+
+```python
+from fibonacci import LLMNode, ToolNode, RetryConfig
+
+# Simple retry config
+analyzer = LLMNode(
+    id="analyzer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Analyze: {{input.text}}",
+    retry=RetryConfig(
+        max_attempts=3,
+        delay=1.0
+    )
+)
+
+# Advanced retry config
+api_call = ToolNode(
+    id="fetch_data",
+    tool="http.request",
+    inputs={"url": "https://api.example.com/data"},
+    retry=RetryConfig(
+        max_attempts=5,
+        delay=1.0,
+        backoff="exponential",  # or "linear", "constant"
+        max_delay=30.0,
+        jitter=True,  # Add randomness to prevent thundering herd
+        retry_on=[
+            "timeout",
+            "rate_limit",
+            "5xx",  # Retry on 500-599 status codes
+        ],
+        no_retry_on=[
+            "4xx",  # Don't retry client errors
+            "validation",
+        ]
+    )
+)
+```
+
+### YAML Retry Configuration
+
+```yaml
+nodes:
+  - id: unreliable_api
+    type: tool
+    tool: http.request
+    inputs:
+      url: "https://api.example.com/data"
+    retry:
+      max_attempts: 5
+      delay: 2.0
+      backoff: exponential
+      max_delay: 60.0
+      jitter: true
+      retry_on:
+        - timeout
+        - rate_limit
+        - connection_error
+```
+
+### Workflow-Level Retry Defaults
+
+```python
+from fibonacci import Workflow, RetryConfig
+
+workflow = Workflow(
+    name="resilient-workflow",
+    default_retry=RetryConfig(
+        max_attempts=3,
+        delay=1.0,
+        backoff="exponential"
+    )
+)
+```
+
+## Fallback Handlers
+
+### Node Fallbacks
+
+Define fallback behavior when a node fails:
+
+```python
+from fibonacci import LLMNode, ToolNode
+
+# Fallback to simpler model
+primary = LLMNode(
+    id="primary_analyzer",
+    model="claude-opus-4-5-20251101",
+    prompt="Complex analysis: {{input.text}}",
+    fallback="fallback_analyzer"
+)
+
+fallback = LLMNode(
+    id="fallback_analyzer",
+    model="claude-haiku-4-5-20251001",
+    prompt="Basic analysis: {{input.text}}"
+)
+
+workflow.add_node(primary)
+workflow.add_node(fallback)
+```
+
+### Fallback Chains
+
+```python
+# Chain of fallbacks
+primary_api = ToolNode(
+    id="primary_api",
+    tool="http.request",
+    inputs={"url": "https://primary.api.com/data"},
+    fallback="secondary_api"
+)
+
+secondary_api = ToolNode(
+    id="secondary_api",
+    tool="http.request",
+    inputs={"url": "https://secondary.api.com/data"},
+    fallback="cached_response"
+)
+
+cached_response = ToolNode(
+    id="cached_response",
+    tool="cache.get",
+    inputs={"key": "last_known_data"}
+)
+```
+
+### Conditional Fallbacks
+
+```python
+from fibonacci import LLMNode, ConditionalNode
+
+analyzer = LLMNode(
+    id="analyzer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Analyze: {{input.text}}",
+    on_error="error_handler"
+)
+
+error_handler = ConditionalNode(
+    id="error_handler",
+    conditions=[
+        {
+            "if": {"field": "{{error.type}}", "equals": "rate_limit"},
+            "then": "wait_and_retry"
+        },
+        {
+            "if": {"field": "{{error.type}}", "equals": "timeout"},
+            "then": "use_cache"
+        }
+    ],
+    default="notify_admin"
+)
+```
+
+## Custom Error Handlers
+
+### Error Handler Functions
+
+```python
+from fibonacci import Workflow, ErrorContext
+
+def my_error_handler(context: ErrorContext):
+    """Custom error handler"""
+    print(f"Error in {context.node_id}: {context.error}")
+    
+    # Log to monitoring system
+    log_error(
+        workflow=context.workflow_name,
+        node=context.node_id,
+        error=str(context.error),
+        inputs=context.inputs
+    )
+    
+    # Return fallback value or re-raise
+    if context.node_id == "analyzer":
+        return {"result": "Analysis unavailable"}
+    
+    raise context.error
+
+workflow = Workflow(
+    name="monitored-workflow",
+    error_handler=my_error_handler
+)
+```
+
+### Async Error Handlers
+
+```python
+async def async_error_handler(context: ErrorContext):
+    """Async error handler for async workflows"""
+    await log_error_async(context)
+    
+    if context.retry_count < 3:
+        await asyncio.sleep(context.retry_count * 2)
+        return {"retry": True}
+    
+    return {"fallback": "default_value"}
+
+workflow = Workflow(
+    name="async-workflow",
+    error_handler=async_error_handler
+)
+```
+
+## Error Recovery Patterns
+
+### Graceful Degradation
+
+```python
+from fibonacci import Workflow, LLMNode, ConditionalNode
+
+workflow = Workflow(name="graceful-degradation")
+
+# Primary: Full analysis with premium model
+full_analysis = LLMNode(
+    id="full_analysis",
+    model="claude-opus-4-5-20251101",
+    prompt="Comprehensive analysis: {{input.text}}",
+    timeout=60,
+    on_error="degraded_analysis"
+)
+
+# Degraded: Simpler analysis with faster model
+degraded_analysis = LLMNode(
+    id="degraded_analysis",
+    model="claude-haiku-4-5-20251001",
+    prompt="Quick analysis: {{input.text}}",
+    timeout=15,
+    on_error="minimal_response"
+)
+
+# Minimal: Static response
+minimal_response = LLMNode(
+    id="minimal_response",
+    model="claude-haiku-4-5-20251001",
+    prompt="Return: 'Analysis temporarily unavailable. Please try again later.'"
+)
+```
+
+### Circuit Breaker
+
+```python
+from fibonacci import Workflow, ToolNode
+from fibonacci.patterns import CircuitBreaker
+
+# Circuit breaker for external API
+circuit_breaker = CircuitBreaker(
+    failure_threshold=5,      # Open after 5 failures
+    recovery_timeout=60,      # Try again after 60s
+    half_open_requests=3      # Test with 3 requests
+)
+
+api_node = ToolNode(
+    id="external_api",
+    tool="http.request",
+    inputs={"url": "https://api.example.com"},
+    circuit_breaker=circuit_breaker
+)
+```
+
+### Partial Results
+
+```python
+from fibonacci import Workflow
+from fibonacci.exceptions import PartialExecutionError
+
+workflow = Workflow(
+    name="partial-results",
+    allow_partial_results=True  # Don't fail entire workflow on node error
+)
+
+try:
+    result = workflow.execute(inputs=data)
+except PartialExecutionError as e:
+    # Get results from successful nodes
+    successful = e.partial_results
+    failed = e.failed_nodes
+    
+    print(f"Completed: {list(successful.keys())}")
+    print(f"Failed: {[n.id for n in failed]}")
+    
+    # Use partial results
+    if "summarizer" in successful:
+        return successful["summarizer"]
+```
+
+## Timeout Handling
+
+### Node Timeouts
+
+```python
+from fibonacci import LLMNode, ToolNode
+
+# LLM timeout
+slow_analyzer = LLMNode(
+    id="deep_analysis",
+    model="claude-opus-4-5-20251101",
+    prompt="Deep analysis: {{input.text}}",
+    timeout=120  # 2 minutes
+)
+
+# Tool timeout
+api_call = ToolNode(
+    id="api_call",
+    tool="http.request",
+    inputs={"url": "https://slow-api.example.com"},
+    timeout=30
+)
+```
+
+### Workflow Timeout
+
+```python
+from fibonacci import Workflow
+from fibonacci.exceptions import TimeoutError
+
+workflow = Workflow(
+    name="time-bounded",
+    timeout=300  # 5 minute total timeout
+)
+
+try:
+    result = workflow.execute(inputs=data, timeout=60)  # Override
+except TimeoutError as e:
+    print(f"Workflow timed out: {e.elapsed}s")
+```
+
+## Validation Errors
+
+### Input Validation
+
+```python
+from fibonacci import Workflow, ValidationError
+
+workflow = Workflow(
+    name="validated-workflow",
+    input_schema={
+        "type": "object",
+        "required": ["text", "language"],
+        "properties": {
+            "text": {"type": "string", "minLength": 1},
+            "language": {"type": "string", "enum": ["en", "es", "fr"]}
+        }
+    }
+)
+
+try:
+    result = workflow.execute(inputs={"text": ""})
+except ValidationError as e:
+    print(f"Invalid input: {e.errors}")
+    # [{"field": "text", "error": "String too short", "min": 1}]
+```
+
+### Output Validation
+
+```python
+from fibonacci import LLMNode
+
+# Validate LLM output
+analyzer = LLMNode(
+    id="analyzer",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Return JSON: {{input.text}}",
+    output_format="json",
+    output_schema={
+        "type": "object",
+        "required": ["sentiment", "confidence"],
+        "properties": {
+            "sentiment": {"enum": ["positive", "negative", "neutral"]},
+            "confidence": {"type": "number", "minimum": 0, "maximum": 1}
+        }
+    },
+    retry_on_validation_error=True,  # Retry if output doesn't match schema
+    max_validation_retries=2
+)
+```
+
+## Logging and Monitoring
+
+### Structured Logging
+
+```python
+from fibonacci import Workflow
+import structlog
+
+logger = structlog.get_logger()
+
+workflow = Workflow(
+    name="logged-workflow",
+    logger=logger
+)
+
+# Logs include:
+# - Workflow start/end
+# - Node execution timing
+# - Errors with full context
+# - Retry attempts
+```
+
+### Error Hooks
+
+```python
+from fibonacci import Workflow
+
+def on_error(event):
+    """Called on any error"""
+    send_to_sentry(event.error)
+    
+def on_retry(event):
+    """Called on each retry"""
+    metrics.increment("workflow.retries", tags={
+        "workflow": event.workflow,
+        "node": event.node_id
+    })
+
+workflow = Workflow(
+    name="monitored-workflow",
+    hooks={
+        "on_error": on_error,
+        "on_retry": on_retry,
+        "on_timeout": lambda e: alert_ops_team(e),
+    }
+)
+```
+
+### Metrics Export
+
+```python
+from fibonacci import Workflow
+from fibonacci.metrics import PrometheusExporter
+
+workflow = Workflow(
+    name="metrics-workflow",
+    metrics_exporter=PrometheusExporter(port=9090)
+)
+
+# Exports:
+# fibonacci_workflow_duration_seconds
+# fibonacci_node_duration_seconds
+# fibonacci_errors_total
+# fibonacci_retries_total
+```
+
+## Best Practices
+
+<AccordionGroup>
+  <Accordion title="Always set timeouts">
+    Prevent runaway executions with appropriate timeouts:
+    ```python
+    node = LLMNode(..., timeout=60)
+    workflow.execute(inputs=data, timeout=300)
+    ```
+  </Accordion>
+
+  <Accordion title="Use exponential backoff">
+    For retries, exponential backoff prevents overwhelming failing services:
+    ```python
+    retry=RetryConfig(
+        backoff="exponential",
+        max_delay=60.0,
+        jitter=True
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Log errors with context">
+    Include relevant context when logging errors:
+    ```python
+    logger.error("Node failed",
+        node_id=e.node_id,
+        inputs=e.input_data,
+        error=str(e)
+    )
+    ```
+  </Accordion>
+
+  <Accordion title="Plan for partial failures">
+    Design workflows to handle partial results when appropriate:
+    ```python
+    workflow = Workflow(allow_partial_results=True)
+    ```
+  </Accordion>
+</AccordionGroup>
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Production workflow patterns
+  </Card>
+  <Card title="Security" icon="shield" href="/guides/security">
+    Secure your workflows
+  </Card>
+</CardGroup>

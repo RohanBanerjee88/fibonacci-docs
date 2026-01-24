@@ -1,0 +1,387 @@
+---
+title: "Your First Workflow"
+description: "Build a complete workflow with multiple nodes and tool integrations"
+---
+
+In this guide, you'll build a complete workflow that:
+1. Reads data from a Google Sheet
+2. Analyzes the data with AI
+3. Generates a summary report
+
+## Prerequisites
+
+<Check>
+  Make sure you've completed the [Quickstart](/getting-started/quickstart) and have your API key configured.
+</Check>
+
+## Step 1: Create the Workflow
+
+Start by creating a new Python file:
+
+```python sales_report.py
+from fibonacci import Workflow, LLMNode, ToolNode
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+# Create the workflow
+wf = Workflow(
+    name="Sales Report Generator",
+    description="Reads sales data and generates an analysis report",
+    tags=["sales", "reporting", "weekly"]
+)
+```
+
+## Step 2: Add the Data Source Node
+
+Use a `ToolNode` to read data from Google Sheets:
+
+```python
+# Node 1: Read sales data from Google Sheets
+read_data = ToolNode(
+    id="read_sales",
+    name="Read Sales Data",
+    tool="google_sheets_read",
+    params={
+        "spreadsheet_id": "{{input.sheet_id}}",
+        "range": "{{input.range}}"
+    }
+)
+
+wf.add_node(read_data)
+```
+
+<Info>
+  The `{{input.sheet_id}}` syntax is a **template variable**. It will be replaced with actual values when you run the workflow.
+</Info>
+
+## Step 3: Add the Analysis Node
+
+Use an `LLMNode` to analyze the data:
+
+```python
+# Node 2: Analyze the sales data
+analyze = LLMNode(
+    id="analyze_data",
+    name="Analyze Sales Data",
+    instruction="""
+    Analyze this sales data and provide:
+    
+    1. **Total Revenue**: Sum of all sales
+    2. **Top Performers**: Top 3 salespeople by revenue
+    3. **Trends**: Week-over-week comparison
+    4. **Concerns**: Any red flags or areas needing attention
+    
+    Sales Data:
+    {{read_sales}}
+    
+    Format your response with clear sections and bullet points.
+    """,
+    dependencies=["read_sales"],  # This node depends on read_sales
+    model="claude-sonnet-4-5-20250929",
+    max_tokens=2000
+)
+
+wf.add_node(analyze)
+```
+
+## Step 4: Add the Summary Node
+
+Add another LLM node to create an executive summary:
+
+```python
+# Node 3: Generate executive summary
+summary = LLMNode(
+    id="executive_summary",
+    name="Executive Summary",
+    instruction="""
+    Based on this analysis, create a brief executive summary (3-4 sentences) 
+    suitable for a busy executive. Focus on the most important insights and 
+    any actions needed.
+    
+    Analysis:
+    {{analyze_data}}
+    """,
+    dependencies=["analyze_data"]
+)
+
+wf.add_node(summary)
+```
+
+## Step 5: Complete Workflow Code
+
+Here's the complete workflow:
+
+```python sales_report.py
+from fibonacci import Workflow, LLMNode, ToolNode
+from dotenv import load_dotenv
+import os
+
+load_dotenv()
+
+# Create the workflow
+wf = Workflow(
+    name="Sales Report Generator",
+    description="Reads sales data and generates an analysis report",
+    tags=["sales", "reporting", "weekly"]
+)
+
+# Node 1: Read data
+read_data = ToolNode(
+    id="read_sales",
+    name="Read Sales Data",
+    tool="google_sheets_read",
+    params={
+        "spreadsheet_id": "{{input.sheet_id}}",
+        "range": "{{input.range}}"
+    }
+)
+
+# Node 2: Analyze
+analyze = LLMNode(
+    id="analyze_data",
+    name="Analyze Sales Data",
+    instruction="""
+    Analyze this sales data and provide:
+    
+    1. **Total Revenue**: Sum of all sales
+    2. **Top Performers**: Top 3 salespeople by revenue
+    3. **Trends**: Week-over-week comparison
+    4. **Concerns**: Any red flags or areas needing attention
+    
+    Sales Data:
+    {{read_sales}}
+    """,
+    dependencies=["read_sales"]
+)
+
+# Node 3: Summary
+summary = LLMNode(
+    id="executive_summary",
+    name="Executive Summary",
+    instruction="""
+    Create a brief executive summary (3-4 sentences) based on:
+    
+    {{analyze_data}}
+    """,
+    dependencies=["analyze_data"]
+)
+
+# Add all nodes
+wf.add_nodes([read_data, analyze, summary])
+
+if __name__ == "__main__":
+    # Validate the workflow
+    wf.validate()
+    print("✅ Workflow validated!")
+    
+    # Deploy
+    api_key = os.getenv("FIBONACCI_API_KEY")
+    workflow_id = wf.deploy(api_key=api_key)
+    print(f"✅ Deployed! ID: {workflow_id}")
+    
+    # Execute
+    result = wf.run(input_data={
+        "sheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",  # Sample Sheet
+        "range": "Sales!A1:E10"
+    })
+    
+    # Print results
+    print(f"\n📊 Status: {result.status}")
+    print(f"⏱️  Duration: {result.duration_seconds:.2f}s")
+    print(f"💰 Cost: ${result.total_cost:.4f}")
+    
+    print("\n" + "="*60)
+    print("📈 ANALYSIS")
+    print("="*60)
+    print(result.output_data["analyze_data"])
+    
+    print("\n" + "="*60)
+    print("📋 EXECUTIVE SUMMARY")
+    print("="*60)
+    print(result.output_data["executive_summary"])
+```
+
+## Step 6: Run Your Workflow
+
+Execute the workflow:
+
+```bash
+python sales_report.py
+```
+
+Expected output:
+
+```
+✅ Workflow validated!
+✅ Deployed! ID: wf_abc123xyz
+
+📊 Status: completed
+⏱️  Duration: 4.32s
+💰 Cost: $0.0023
+
+============================================================
+📈 ANALYSIS
+============================================================
+## Total Revenue
+$1,234,567 for the period
+
+## Top Performers
+1. Sarah Johnson - $245,000
+2. Mike Chen - $198,000
+3. Lisa Park - $187,000
+
+## Trends
+- 12% increase from last week
+- Strong performance in Enterprise segment
+
+## Concerns
+- SMB segment down 8%
+- Two reps below quota
+
+============================================================
+📋 EXECUTIVE SUMMARY
+============================================================
+Sales exceeded targets by 12% this week, driven by strong Enterprise 
+performance from Sarah Johnson and Mike Chen. However, the SMB segment 
+declined 8%, requiring immediate attention. Recommend a team meeting 
+to address underperforming segments.
+```
+
+## Understanding the Workflow
+
+<Frame>
+  <img src="/images/workflow-diagram.png" alt="Workflow Diagram" />
+</Frame>
+
+### How Nodes Connect
+
+1. **read_sales** runs first (no dependencies)
+2. **analyze_data** waits for read_sales to complete
+3. **executive_summary** waits for analyze_data to complete
+
+### Template Variables
+
+- `{{input.sheet_id}}` - Replaced with input data at runtime
+- `{{read_sales}}` - Replaced with the output of the read_sales node
+- `{{analyze_data}}` - Replaced with the output of the analyze_data node
+
+## Adding Conditional Logic
+
+Want to send an alert only if sales drop? Add a conditional node:
+
+```python
+from fibonacci import ConditionalNode
+
+# Check if we need an alert
+check_alert = ConditionalNode(
+    id="check_alert",
+    name="Check if Alert Needed",
+    left_value="{{analyze_data}}",
+    operator="contains",
+    right_value="down",
+    true_branch=["send_alert"],
+    false_branch=[],
+    dependencies=["analyze_data"]
+)
+
+# Send Slack alert (only runs if condition is true)
+send_alert = ToolNode(
+    id="send_alert",
+    name="Send Slack Alert",
+    tool="slack_send_message",
+    params={
+        "channel": "#sales-alerts",
+        "message": "⚠️ Sales Alert!\n\n{{executive_summary}}"
+    },
+    dependencies=["check_alert", "executive_summary"]
+)
+```
+
+## Exporting to YAML
+
+You can also define workflows in YAML:
+
+```python
+# Export your workflow to YAML
+wf.to_yaml("sales_report.yaml")
+```
+
+This creates:
+
+```yaml sales_report.yaml
+name: Sales Report Generator
+description: Reads sales data and generates an analysis report
+version: 1
+is_active: true
+tags:
+  - sales
+  - reporting
+  - weekly
+
+nodes:
+  - id: read_sales
+    type: tool
+    name: Read Sales Data
+    tool_name: google_sheets_read
+    tool_params:
+      spreadsheet_id: "{{input.sheet_id}}"
+      range: "{{input.range}}"
+
+  - id: analyze_data
+    type: llm
+    name: Analyze Sales Data
+    instruction: |
+      Analyze this sales data and provide:
+      1. **Total Revenue**: Sum of all sales
+      2. **Top Performers**: Top 3 salespeople by revenue
+      ...
+    dependencies:
+      - read_sales
+
+  - id: executive_summary
+    type: llm
+    name: Executive Summary
+    instruction: |
+      Create a brief executive summary...
+    dependencies:
+      - analyze_data
+```
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card
+    title="Node Types Deep Dive"
+    icon="sitemap"
+    href="/guides/nodes"
+  >
+    Learn about all available node types
+  </Card>
+  <Card
+    title="Tool Integrations"
+    icon="plug"
+    href="/guides/tool-nodes"
+  >
+    Connect to 100+ tools and services
+  </Card>
+  <Card
+    title="Conditional Logic"
+    icon="code-branch"
+    href="/guides/conditional-logic"
+  >
+    Build dynamic workflows with branching
+  </Card>
+  <Card
+    title="Memory & State"
+    icon="database"
+    href="/guides/memory"
+  >
+    Persist data across workflow runs
+  </Card>
+</CardGroup>
+
+<Check>
+  **Great job!** You've built a real workflow with multiple nodes, dependencies, and AI analysis.
+</Check>

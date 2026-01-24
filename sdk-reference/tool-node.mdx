@@ -1,0 +1,519 @@
+---
+title: 'ToolNode'
+description: 'Node for external tool and API integrations'
+---
+
+The `ToolNode` class executes external tool integrations, connecting workflows to services like Google Workspace, Slack, databases, and HTTP APIs.
+
+## Constructor
+
+```python
+from fibonacci import ToolNode
+
+node = ToolNode(
+    id="fetch_data",
+    tool="google_sheets.read_range",
+    inputs={
+        "spreadsheet_id": "{{input.sheet_id}}",
+        "range": "A1:D100"
+    }
+)
+```
+
+### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `id` | `str` | Required | Unique node identifier |
+| `tool` | `str` | Required | Tool identifier (e.g., "slack.post_message") |
+| `inputs` | `dict` | Required | Tool input parameters |
+| `dependencies` | `list[str]` | `[]` | IDs of nodes this depends on |
+| `retry` | `RetryConfig` | `None` | Retry configuration |
+| `timeout` | `int` | `None` | Execution timeout in seconds |
+| `fallback` | `str` | `None` | Fallback node ID on failure |
+| `on_error` | `str` | `None` | Error handler node ID |
+| `condition` | `dict` | `None` | Conditional execution |
+
+## Tool Categories
+
+### Google Workspace
+
+```python
+# Google Sheets - Read
+read_sheet = ToolNode(
+    id="read_sheet",
+    tool="google_sheets.read_range",
+    inputs={
+        "spreadsheet_id": "abc123",
+        "range": "Sheet1!A1:D100"
+    }
+)
+
+# Google Sheets - Write
+write_sheet = ToolNode(
+    id="write_sheet",
+    tool="google_sheets.write_range",
+    inputs={
+        "spreadsheet_id": "abc123",
+        "range": "Sheet1!A1",
+        "values": "{{analyzer.data}}"
+    }
+)
+
+# Google Drive - Search
+search_drive = ToolNode(
+    id="search_files",
+    tool="google_drive.search",
+    inputs={
+        "query": "type:document name contains 'report'"
+    }
+)
+
+# Google Drive - Download
+download = ToolNode(
+    id="download",
+    tool="google_drive.download",
+    inputs={
+        "file_id": "{{search_files.0.id}}"
+    }
+)
+
+# Gmail - Send
+send_email = ToolNode(
+    id="send_email",
+    tool="gmail.send",
+    inputs={
+        "to": "user@example.com",
+        "subject": "Analysis Complete",
+        "body": "{{analyzer}}"
+    }
+)
+
+# Google Calendar - Create Event
+create_event = ToolNode(
+    id="schedule",
+    tool="google_calendar.create_event",
+    inputs={
+        "summary": "Follow-up Meeting",
+        "start": "2025-01-25T10:00:00",
+        "end": "2025-01-25T11:00:00",
+        "attendees": ["team@company.com"]
+    }
+)
+```
+
+### Communication
+
+```python
+# Slack - Post Message
+slack_message = ToolNode(
+    id="notify_slack",
+    tool="slack.post_message",
+    inputs={
+        "channel": "#notifications",
+        "message": "Analysis complete: {{analyzer}}"
+    }
+)
+
+# Slack - Upload File
+slack_file = ToolNode(
+    id="upload_report",
+    tool="slack.upload_file",
+    inputs={
+        "channel": "#reports",
+        "file_content": "{{report}}",
+        "filename": "report.txt"
+    }
+)
+
+# Microsoft Teams
+teams_message = ToolNode(
+    id="teams_notify",
+    tool="teams.post_message",
+    inputs={
+        "channel_id": "channel-123",
+        "message": "{{summary}}"
+    }
+)
+
+# Email (SMTP)
+email = ToolNode(
+    id="send_email",
+    tool="email.send",
+    inputs={
+        "to": "recipient@example.com",
+        "subject": "Report Ready",
+        "body": "{{report}}",
+        "html": True
+    }
+)
+```
+
+### HTTP Requests
+
+```python
+# GET Request
+get_data = ToolNode(
+    id="fetch_api",
+    tool="http.request",
+    inputs={
+        "method": "GET",
+        "url": "https://api.example.com/data",
+        "headers": {
+            "Authorization": "Bearer {{secrets.API_KEY}}"
+        }
+    }
+)
+
+# POST Request
+post_data = ToolNode(
+    id="submit_data",
+    tool="http.request",
+    inputs={
+        "method": "POST",
+        "url": "https://api.example.com/submit",
+        "headers": {
+            "Content-Type": "application/json"
+        },
+        "body": {
+            "result": "{{analyzer}}",
+            "timestamp": "{{now}}"
+        }
+    }
+)
+
+# With Authentication
+auth_request = ToolNode(
+    id="auth_api",
+    tool="http.request",
+    inputs={
+        "method": "GET",
+        "url": "https://api.example.com/secure",
+        "auth": {
+            "type": "oauth2",
+            "token": "{{secrets.ACCESS_TOKEN}}"
+        }
+    }
+)
+```
+
+### Databases
+
+```python
+# PostgreSQL - Query
+pg_query = ToolNode(
+    id="query_db",
+    tool="postgres.query",
+    inputs={
+        "connection": "{{secrets.DATABASE_URL}}",
+        "query": "SELECT * FROM customers WHERE status = $1",
+        "params": ["active"]
+    }
+)
+
+# PostgreSQL - Insert
+pg_insert = ToolNode(
+    id="insert_record",
+    tool="postgres.insert",
+    inputs={
+        "connection": "{{secrets.DATABASE_URL}}",
+        "table": "analysis_results",
+        "data": {
+            "input": "{{input.text}}",
+            "result": "{{analyzer}}",
+            "created_at": "{{now}}"
+        }
+    }
+)
+
+# MongoDB
+mongo_query = ToolNode(
+    id="mongo_find",
+    tool="mongodb.find",
+    inputs={
+        "connection": "{{secrets.MONGO_URI}}",
+        "collection": "documents",
+        "filter": {"status": "pending"},
+        "limit": 100
+    }
+)
+
+# Redis
+redis_get = ToolNode(
+    id="cache_get",
+    tool="redis.get",
+    inputs={
+        "connection": "{{secrets.REDIS_URL}}",
+        "key": "cached:{{input.id}}"
+    }
+)
+```
+
+### Cloud Storage
+
+```python
+# AWS S3 - Upload
+s3_upload = ToolNode(
+    id="upload_s3",
+    tool="s3.upload",
+    inputs={
+        "bucket": "my-bucket",
+        "key": "reports/{{input.id}}.json",
+        "body": "{{report}}",
+        "content_type": "application/json"
+    }
+)
+
+# AWS S3 - Download
+s3_download = ToolNode(
+    id="download_s3",
+    tool="s3.download",
+    inputs={
+        "bucket": "my-bucket",
+        "key": "data/{{input.filename}}"
+    }
+)
+
+# Google Cloud Storage
+gcs_upload = ToolNode(
+    id="upload_gcs",
+    tool="gcs.upload",
+    inputs={
+        "bucket": "my-bucket",
+        "path": "exports/{{input.id}}.csv",
+        "content": "{{exporter}}"
+    }
+)
+```
+
+### CRM & Business
+
+```python
+# Salesforce - Query
+sf_query = ToolNode(
+    id="sf_accounts",
+    tool="salesforce.query",
+    inputs={
+        "query": "SELECT Id, Name FROM Account WHERE Type = 'Customer'"
+    }
+)
+
+# Salesforce - Create
+sf_create = ToolNode(
+    id="create_lead",
+    tool="salesforce.create",
+    inputs={
+        "object": "Lead",
+        "data": {
+            "FirstName": "{{input.first_name}}",
+            "LastName": "{{input.last_name}}",
+            "Company": "{{input.company}}"
+        }
+    }
+)
+
+# HubSpot
+hubspot = ToolNode(
+    id="create_contact",
+    tool="hubspot.create_contact",
+    inputs={
+        "email": "{{input.email}}",
+        "properties": {
+            "firstname": "{{input.name}}",
+            "company": "{{input.company}}"
+        }
+    }
+)
+
+# Stripe
+stripe_customer = ToolNode(
+    id="get_customer",
+    tool="stripe.get_customer",
+    inputs={
+        "customer_id": "{{input.customer_id}}"
+    }
+)
+```
+
+## Tool Discovery
+
+### List Available Tools
+
+```python
+from fibonacci import list_tools
+
+# List all tools
+tools = list_tools()
+for tool in tools:
+    print(f"{tool.name}: {tool.description}")
+
+# Filter by category
+google_tools = list_tools(category="google")
+```
+
+### Search Tools
+
+```python
+from fibonacci import search_tools
+
+# Search by description
+results = search_tools("send email")
+for tool in results:
+    print(f"{tool.name}: {tool.description}")
+```
+
+### Get Tool Info
+
+```python
+from fibonacci import print_tool_info
+
+# Print detailed tool information
+print_tool_info("google_sheets.read_range")
+```
+
+Output:
+```
+Tool: google_sheets.read_range
+Description: Read data from a Google Sheets range
+
+Parameters:
+  - spreadsheet_id (string, required): The spreadsheet ID
+  - range (string, required): A1 notation range (e.g., "Sheet1!A1:D100")
+  
+Returns:
+  - values: 2D array of cell values
+  - metadata: Sheet metadata
+```
+
+## Dynamic Inputs
+
+Use template variables for dynamic tool inputs:
+
+```python
+node = ToolNode(
+    id="dynamic_query",
+    tool="postgres.query",
+    inputs={
+        "connection": "{{secrets.DATABASE_URL}}",
+        "query": "SELECT * FROM {{input.table}} WHERE id = $1",
+        "params": ["{{input.id}}"]
+    }
+)
+```
+
+## Error Handling
+
+### Retry Configuration
+
+```python
+from fibonacci import ToolNode, RetryConfig
+
+node = ToolNode(
+    id="api_call",
+    tool="http.request",
+    inputs={"url": "https://api.example.com"},
+    retry=RetryConfig(
+        max_attempts=5,
+        delay=1.0,
+        backoff="exponential",
+        max_delay=30.0,
+        retry_on=["timeout", "5xx", "rate_limit"]
+    )
+)
+```
+
+### Fallback
+
+```python
+primary = ToolNode(
+    id="primary_api",
+    tool="http.request",
+    inputs={"url": "https://primary.api.com"},
+    fallback="backup_api"
+)
+
+backup = ToolNode(
+    id="backup_api",
+    tool="http.request",
+    inputs={"url": "https://backup.api.com"}
+)
+```
+
+## Conditional Execution
+
+```python
+node = ToolNode(
+    id="notify_urgent",
+    tool="slack.post_message",
+    inputs={
+        "channel": "#urgent",
+        "message": "Urgent issue: {{analyzer}}"
+    },
+    condition={
+        "field": "{{analyzer.urgency}}",
+        "operator": "equals",
+        "value": "high"
+    }
+)
+```
+
+## Complete Example
+
+```python
+from fibonacci import Workflow, LLMNode, ToolNode, RetryConfig
+
+workflow = Workflow(name="data-pipeline")
+
+# Fetch data from Google Sheets
+fetch_data = ToolNode(
+    id="fetch_data",
+    tool="google_sheets.read_range",
+    inputs={
+        "spreadsheet_id": "{{input.sheet_id}}",
+        "range": "Data!A1:Z1000"
+    },
+    retry=RetryConfig(max_attempts=3)
+)
+
+# Analyze with LLM
+analyze = LLMNode(
+    id="analyze",
+    model="claude-sonnet-4-5-20250929",
+    prompt="Analyze this data and find insights: {{fetch_data}}",
+    dependencies=["fetch_data"]
+)
+
+# Store results in database
+store_results = ToolNode(
+    id="store",
+    tool="postgres.insert",
+    inputs={
+        "connection": "{{secrets.DATABASE_URL}}",
+        "table": "analysis_results",
+        "data": {
+            "sheet_id": "{{input.sheet_id}}",
+            "analysis": "{{analyze}}",
+            "created_at": "{{now}}"
+        }
+    },
+    dependencies=["analyze"]
+)
+
+# Notify via Slack
+notify = ToolNode(
+    id="notify",
+    tool="slack.post_message",
+    inputs={
+        "channel": "#analytics",
+        "message": "Analysis complete for {{input.sheet_id}}:\n{{analyze}}"
+    },
+    dependencies=["analyze"]
+)
+
+workflow.add_node(fetch_data)
+workflow.add_node(analyze)
+workflow.add_node(store_results)
+workflow.add_node(notify)
+
+result = workflow.execute(inputs={"sheet_id": "abc123"})
+```
