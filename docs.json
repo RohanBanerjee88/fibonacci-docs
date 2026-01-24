@@ -10,11 +10,7 @@
   "colors": {
     "primary": "#6366F1",
     "light": "#818CF8",
-    "dark": "#4F46E5",
-    "anchors": {
-      "from": "#6366F1",
-      "to": "#8B5CF6"
-    }
+    "dark": "#4F46E5"
   },
   "topbarLinks": [
     {
@@ -86,28 +82,13 @@
     {
       "group": "SDK Reference",
       "pages": [
-        "sdk-reference/overview"
-      ]
-    },
-    {
-      "group": "Core Classes",
-      "pages": [
+        "sdk-reference/overview",
         "sdk-reference/workflow",
-        "sdk-reference/client"
-      ]
-    },
-    {
-      "group": "Node Types",
-      "pages": [
+        "sdk-reference/client",
         "sdk-reference/llm-node",
         "sdk-reference/tool-node",
         "sdk-reference/critic-node",
-        "sdk-reference/conditional-node"
-      ]
-    },
-    {
-      "group": "Utilities",
-      "pages": [
+        "sdk-reference/conditional-node",
         "sdk-reference/memory",
         "sdk-reference/exceptions"
       ]
@@ -123,9 +104,5 @@
     "github": "https://github.com/fibonacci-ai",
     "twitter": "https://twitter.com/fibonacci_ai",
     "discord": "https://discord.gg/fibonacci"
-  },
-  "feedback": {
-    "thumbsRating": true,
-    "suggestEdit": true
   }
 }
