@@ -1,9 +1,9 @@
 ---
 title: 'LLMNode'
-description: 'Node for AI language model interactions'
+description: 'Node for calling Claude AI models with an instruction'
 ---
 
-The `LLMNode` class executes prompts against AI language models, supporting templating, structured outputs, and various model configurations.
+The `LLMNode` class sends an instruction to a Claude model and captures the response. It supports template variables so you can inject dynamic data from workflow inputs or previous nodes.
 
 ## Constructor
 
@@ -12,8 +12,8 @@ from fibonacci import LLMNode
 
 node = LLMNode(
     id="analyzer",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Analyze the following text: {{input.text}}"
+    name="Analyze Text",
+    instruction="Analyze the following text and summarize key points: {{input.text}}"
 )
 ```
 
@@ -21,345 +21,279 @@ node = LLMNode(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `id` | `str` | Required | Unique node identifier |
-| `model` | `str` | Required | Model identifier |
-| `prompt` | `str` | Required | Prompt template with `{{variables}}` |
-| `system_prompt` | `str` | `None` | System message for the model |
-| `temperature` | `float` | `1.0` | Sampling temperature (0.0-2.0) |
-| `max_tokens` | `int` | `4096` | Maximum response tokens |
-| `output_format` | `str` | `"text"` | Output format: "text" or "json" |
-| `output_schema` | `dict` | `None` | JSON Schema for output validation |
-| `dependencies` | `list[str]` | `[]` | IDs of nodes this depends on |
-| `retry` | `RetryConfig` | `None` | Retry configuration |
-| `timeout` | `int` | `None` | Execution timeout in seconds |
-| `fallback` | `str` | `None` | Fallback node ID on failure |
-| `on_error` | `str` | `None` | Error handler node ID |
-| `memory_read` | `list[str]` | `[]` | Memory keys to read |
-| `memory_write` | `dict` | `None` | Memory write configuration |
-| `condition` | `dict` | `None` | Conditional execution |
+| `id` | `str` | Required | Unique node identifier (lowercase letters, numbers, underscores, hyphens) |
+| `name` | `str` | Required | Human-readable node name |
+| `instruction` | `str` | Required | Instruction sent to Claude — supports `{{variable}}` template syntax |
+| `model` | `str` | `"claude-haiku-4-5"` | Claude model to use (see table below) |
+| `max_tokens` | `int` | `2000` | Maximum tokens in the response |
+| `temperature` | `float` | `1.0` | Sampling temperature — `0.0` (deterministic) to `1.0` (creative) |
+| `dependencies` | `list[str]` | `[]` | Node IDs this node waits for before running |
+| `enable_retry` | `bool` | `False` | Retry the node on failure |
+| `max_retries` | `int` | `3` | Maximum retry attempts (used when `enable_retry=True`) |
+| `retry_delay` | `float` | `1.0` | Initial delay in seconds between retries |
 
 ## Supported Models
 
 | Model | Identifier | Best For |
 |-------|-----------|----------|
-| Claude Opus 4.5 | `claude-opus-4-5-20251101` | Complex reasoning, analysis |
-| Claude Sonnet 4.5 | `claude-sonnet-4-5-20250929` | General purpose, balanced |
-| Claude Haiku 4.5 | `claude-haiku-4-5-20251001` | Fast, cost-effective tasks |
+| Claude Haiku 4.5 | `claude-haiku-4-5` | Fast, cost-effective tasks — **SDK default** |
+| Claude Sonnet 4.6 | `claude-sonnet-4-6` | Balanced quality and speed — general purpose |
+| Claude Opus 4.6 | `claude-opus-4-6` | Most capable — complex reasoning and analysis |
 
 ## Template Variables
 
-Use `{{variable}}` syntax to inject dynamic values:
+Use `{{variable}}` syntax to inject dynamic values into the instruction:
 
 ```python
 node = LLMNode(
     id="writer",
-    model="claude-sonnet-4-5-20250929",
-    prompt="""
-    Write a {{input.style}} email about {{input.topic}}.
-    
+    name="Write Email",
+    instruction="""
+    Write a {{input.tone}} email about {{input.topic}}.
+
     Previous analysis: {{analyzer}}
-    
-    User preferences: {{memory.preferences}}
     """
 )
 ```
 
-### Available Variables
+### Available Variable Sources
 
-| Variable | Source |
-|----------|--------|
-| `{{input.field}}` | Workflow input |
-| `{{node_id}}` | Output from another node |
-| `{{node_id.field}}` | Specific field from node output |
-| `{{memory.key}}` | Value from memory |
-| `{{env.VAR}}` | Environment variable |
+| Syntax | Where it comes from |
+|--------|--------------------|
+| `{{input.field}}` | Workflow input data |
+| `{{node_id}}` | Full output of another node |
+| `{{node_id.field}}` | Specific field from a node's JSON output |
 
-## Structured Output
-
-### JSON Output
+## Selecting a Model
 
 ```python
-node = LLMNode(
-    id="extractor",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Extract entities from: {{input.text}}",
-    output_format="json",
-    output_schema={
-        "type": "object",
-        "required": ["entities"],
-        "properties": {
-            "entities": {
-                "type": "array",
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string"},
-                        "type": {"type": "string"},
-                        "confidence": {"type": "number"}
-                    }
-                }
-            }
-        }
-    }
+# Default — fast and cheap
+quick = LLMNode(
+    id="quick",
+    name="Quick Summary",
+    instruction="Summarize in one sentence: {{input.text}}"
+    # model defaults to claude-haiku-4-5
+)
+
+# Balanced — good for most tasks
+balanced = LLMNode(
+    id="balanced",
+    name="Balanced Analysis",
+    instruction="Analyze and explain: {{input.text}}",
+    model="claude-sonnet-4-6"
+)
+
+# Most capable — use for complex tasks
+complex_task = LLMNode(
+    id="complex_task",
+    name="Deep Reasoning",
+    instruction="Perform a detailed multi-step analysis of: {{input.data}}",
+    model="claude-opus-4-6"
 )
 ```
 
-### Retry on Validation Error
+## Temperature
+
+Controls randomness. Range is `0.0` to `1.0`:
 
 ```python
-node = LLMNode(
-    id="structured",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Return JSON with sentiment analysis",
-    output_format="json",
-    output_schema=schema,
-    retry_on_validation_error=True,
-    max_validation_retries=2
+# Deterministic — good for extraction, classification, structured output
+extract = LLMNode(
+    id="extract",
+    name="Extract Entities",
+    instruction="Extract all names from: {{input.text}}",
+    temperature=0.0
+)
+
+# Default (1.0) — good for general tasks
+general = LLMNode(
+    id="general",
+    name="General Response",
+    instruction="Respond helpfully to: {{input.message}}"
+    # temperature defaults to 1.0
+)
+
+# More creative — good for writing, brainstorming
+creative = LLMNode(
+    id="creative",
+    name="Creative Writing",
+    instruction="Write a short story about: {{input.topic}}",
+    temperature=0.9
 )
 ```
 
-## System Prompts
+## Max Tokens
+
+Limit how long the response can be:
 
 ```python
-node = LLMNode(
-    id="assistant",
-    model="claude-sonnet-4-5-20250929",
-    system_prompt="""You are a helpful customer service assistant.
-    - Be concise and friendly
-    - Always offer to help further
-    - Never make promises you can't keep""",
-    prompt="Customer message: {{input.message}}"
+# Short response
+classify = LLMNode(
+    id="classify",
+    name="Classify",
+    instruction="Classify as positive, negative, or neutral: {{input.text}}",
+    max_tokens=10   # single word response
+)
+
+# Long response
+report = LLMNode(
+    id="report",
+    name="Generate Report",
+    instruction="Write a detailed report on: {{input.topic}}",
+    max_tokens=2000  # default
 )
 ```
 
 ## Dependencies
 
-Control execution order with dependencies:
+Control execution order by declaring which nodes must finish before this one runs:
 
 ```python
 from fibonacci import Workflow, LLMNode
 
-workflow = Workflow(name="pipeline")
+wf = Workflow(name="pipeline")
 
-# First node - no dependencies
+# First node — no dependencies
 analyzer = LLMNode(
     id="analyzer",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Analyze: {{input.text}}"
+    name="Analyze",
+    instruction="Analyze: {{input.text}}"
 )
 
-# Second node - depends on analyzer
+# Second node — waits for analyzer to complete
 summarizer = LLMNode(
     id="summarizer",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Summarize this analysis: {{analyzer}}",
+    name="Summarize",
+    instruction="Summarize this analysis: {{analyzer}}",
     dependencies=["analyzer"]
 )
 
-# Third node - depends on both
+# Third node — waits for both
 reporter = LLMNode(
     id="reporter",
-    model="claude-sonnet-4-5-20250929",
-    prompt="""
-    Create report:
+    name="Create Report",
+    instruction="""Create a report:
     Analysis: {{analyzer}}
-    Summary: {{summarizer}}
-    """,
+    Summary: {{summarizer}}""",
     dependencies=["analyzer", "summarizer"]
 )
+
+wf.add_nodes([analyzer, summarizer, reporter])
 ```
 
-## Memory Integration
-
-### Reading Memory
+You can also use the fluent `.depends_on()` method:
 
 ```python
-node = LLMNode(
-    id="chat",
-    model="claude-sonnet-4-5-20250929",
-    prompt="""
-    Conversation history:
-    {{memory.history}}
-    
-    User preferences:
-    {{memory.preferences}}
-    
-    User message: {{input.message}}
-    """,
-    memory_read=["history", "preferences"]
-)
+reporter = LLMNode(
+    id="reporter",
+    name="Create Report",
+    instruction="Report: {{analyzer}} / {{summarizer}}"
+).depends_on("analyzer", "summarizer")
 ```
 
-### Writing Memory
+## Retry Configuration
+
+Enable retries using `enable_retry=True` or the fluent `.with_retry()` method:
 
 ```python
+# Via constructor
 node = LLMNode(
-    id="summarizer",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Summarize: {{input.text}}",
-    memory_write={
-        "key": "last_summary",
-        "scope": "user"  # workflow, user, organization, global
-    }
+    id="analyzer",
+    name="Analyze",
+    instruction="Analyze: {{input.text}}",
+    enable_retry=True,
+    max_retries=5,
+    retry_delay=2.0
 )
+
+# Via fluent method (equivalent)
+node = LLMNode(
+    id="analyzer",
+    name="Analyze",
+    instruction="Analyze: {{input.text}}"
+).with_retry(max_retries=5, delay=2.0)
 ```
 
 ## Conditional Execution
 
-Only execute when condition is met:
+Run this node only when a condition is met using `.with_condition()`:
 
 ```python
-node = LLMNode(
-    id="detailed_analysis",
-    model="claude-opus-4-5-20251101",
-    prompt="Deep analysis: {{input.text}}",
-    condition={
-        "field": "{{input.analysis_level}}",
-        "operator": "equals",
-        "value": "detailed"
-    }
+# Only run expensive model when analysis level is detailed
+deep = LLMNode(
+    id="deep",
+    name="Deep Analysis",
+    instruction="Perform deep analysis of: {{input.text}}",
+    model="claude-opus-4-6"
+).with_condition(
+    left_value="{{input.analysis_level}}",
+    operator="equals",
+    right_value="detailed"
 )
 ```
 
-## Error Handling
+## YAML Configuration
 
-### Retry Configuration
-
-```python
-from fibonacci import LLMNode, RetryConfig
-
-node = LLMNode(
-    id="analyzer",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Analyze: {{input.text}}",
-    retry=RetryConfig(
-        max_attempts=3,
-        delay=1.0,
-        backoff="exponential"
-    )
-)
-```
-
-### Fallback Node
-
-```python
-# Primary with expensive model
-primary = LLMNode(
-    id="primary",
-    model="claude-opus-4-5-20251101",
-    prompt="Complex analysis: {{input.text}}",
-    timeout=60,
-    fallback="fallback"
-)
-
-# Fallback with faster model
-fallback = LLMNode(
-    id="fallback",
-    model="claude-haiku-4-5-20251001",
-    prompt="Quick analysis: {{input.text}}"
-)
-```
-
-## Model Parameters
-
-### Temperature
-
-Control randomness (0.0 = deterministic, 2.0 = very random):
-
-```python
-# Deterministic for factual tasks
-factual = LLMNode(
-    id="factual",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Extract facts: {{input.text}}",
-    temperature=0.0
-)
-
-# Creative for writing
-creative = LLMNode(
-    id="creative",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Write a story about: {{input.topic}}",
-    temperature=1.2
-)
-```
-
-### Max Tokens
-
-Limit response length:
-
-```python
-node = LLMNode(
-    id="tweet",
-    model="claude-haiku-4-5-20251001",
-    prompt="Write a tweet about: {{input.topic}}",
-    max_tokens=100
-)
+```yaml
+nodes:
+  - id: summarizer
+    name: Summarize Text
+    type: llm
+    instruction: "Summarize the following text: {{input.text}}"
+    config:
+      model: claude-haiku-4-5     # optional, this is the default
+      max_tokens: 500
+      temperature: 0.5
+    dependencies:
+      - fetch_data
 ```
 
 ## Complete Example
 
 ```python
-from fibonacci import Workflow, LLMNode, RetryConfig
+from fibonacci import Workflow, LLMNode
 
-workflow = Workflow(name="content-pipeline")
+wf = Workflow(name="blog-pipeline")
 
-# Outline generator
+# Outline
 outliner = LLMNode(
     id="outliner",
-    model="claude-sonnet-4-5-20250929",
-    system_prompt="You are a content strategist.",
-    prompt="Create an outline for a blog post about: {{input.topic}}",
-    temperature=0.7,
-    output_format="json",
-    output_schema={
-        "type": "object",
-        "properties": {
-            "title": {"type": "string"},
-            "sections": {
-                "type": "array",
-                "items": {"type": "string"}
-            }
-        }
-    }
+    name="Create Outline",
+    instruction="Create a structured outline for a blog post about: {{input.topic}}",
+    temperature=0.7
 )
 
-# Content writer
+# Draft
 writer = LLMNode(
     id="writer",
-    model="claude-sonnet-4-5-20250929",
-    system_prompt="You are a skilled blog writer.",
-    prompt="""
+    name="Write Draft",
+    instruction="""
     Write a blog post following this outline:
-    Title: {{outliner.title}}
-    Sections: {{outliner.sections}}
-    
+    {{outliner}}
+
     Style: {{input.style}}
     """,
-    dependencies=["outliner"],
+    model="claude-sonnet-4-6",
     max_tokens=2000,
-    retry=RetryConfig(max_attempts=2)
+    dependencies=["outliner"]
 )
 
-# Editor
+# Edit
 editor = LLMNode(
     id="editor",
-    model="claude-opus-4-5-20251101",
-    system_prompt="You are an expert editor.",
-    prompt="Edit for clarity and engagement: {{writer}}",
-    dependencies=["writer"],
-    temperature=0.3
+    name="Edit Draft",
+    instruction="Edit for clarity and engagement: {{writer}}",
+    model="claude-opus-4-6",
+    temperature=0.3,
+    dependencies=["writer"]
 )
 
-workflow.add_node(outliner)
-workflow.add_node(writer)
-workflow.add_node(editor)
+wf.add_nodes([outliner, writer, editor])
 
-# Execute
-result = workflow.execute(inputs={
+result = wf.run(input_data={
     "topic": "AI in Healthcare",
-    "style": "informative yet engaging"
+    "style": "informative yet approachable"
 })
 
-print(result["editor"])
+print(result.output_data["editor"])
 ```
