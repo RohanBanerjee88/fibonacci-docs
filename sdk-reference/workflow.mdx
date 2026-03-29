@@ -1,20 +1,19 @@
 ---
 title: 'Workflow'
-description: 'Core class for building and executing AI workflows'
+description: 'Core class for building, deploying, and running AI workflows'
 ---
 
-The `Workflow` class is the foundation of Fibonacci. It orchestrates node execution, manages dependencies, and handles workflow lifecycle.
+The `Workflow` class is the foundation of Fibonacci. It orchestrates node execution, manages dependencies, and handles the full workflow lifecycle from building to deployment and execution.
 
 ## Constructor
 
 ```python
 from fibonacci import Workflow
 
-workflow = Workflow(
-    name="my-workflow",
-    description="Processes customer inquiries",
-    version="1.0.0",
-    timeout=300
+wf = Workflow(
+    name="customer-support-bot",
+    description="Routes and responds to customer support tickets",
+    version=1
 )
 ```
 
@@ -22,404 +21,413 @@ workflow = Workflow(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `name` | `str` | Required | Unique workflow identifier |
-| `description` | `str` | `None` | Human-readable description |
-| `version` | `str` | `None` | Semantic version (e.g., "1.0.0") |
-| `timeout` | `int` | `None` | Maximum execution time in seconds |
-| `memory_config` | `MemoryConfig` | `None` | Memory backend configuration |
-| `default_retry` | `RetryConfig` | `None` | Default retry settings for nodes |
-| `input_schema` | `dict` | `None` | JSON Schema for input validation |
-| `output_schema` | `dict` | `None` | JSON Schema for output validation |
-| `error_handler` | `Callable` | `None` | Custom error handler function |
-| `hooks` | `dict` | `None` | Lifecycle hook functions |
-| `allow_partial_results` | `bool` | `False` | Return results from successful nodes on failure |
+| `name` | `str` | Required | Workflow name |
+| `description` | `str` | `""` | Human-readable description |
+| `version` | `int` | `1` | Workflow version number |
+| `is_active` | `bool` | `True` | Whether the deployed workflow is active |
+| `is_template` | `bool` | `False` | Save as a reusable template |
+| `config` | `Config` | `None` | SDK configuration object (uses default config if omitted) |
 
 ## Class Methods
 
-### from_yaml
+### from\_yaml
 
 Load a workflow from a YAML file.
 
 ```python
-workflow = Workflow.from_yaml(path: str) -> Workflow
+wf = Workflow.from_yaml(path: str) -> Workflow
 ```
 
 **Parameters:**
-- `path` (`str`): Path to YAML workflow file
+- `path` (`str`): Path to the YAML workflow file
 
 **Returns:** `Workflow` instance
 
 **Example:**
 ```python
-workflow = Workflow.from_yaml("workflows/analyzer.yaml")
-```
-
----
-
-### from_yaml_string
-
-Load a workflow from a YAML string.
-
-```python
-workflow = Workflow.from_yaml_string(yaml_content: str) -> Workflow
-```
-
-**Parameters:**
-- `yaml_content` (`str`): YAML content as string
-
-**Returns:** `Workflow` instance
-
-**Example:**
-```python
-yaml = """
-name: quick-workflow
-nodes:
-  - id: analyze
-    type: llm
-    model: claude-sonnet-4-5-20250929
-    prompt: "Analyze: {{input.text}}"
-"""
-workflow = Workflow.from_yaml_string(yaml)
-```
-
----
-
-### from_yaml_url
-
-Load a workflow from a remote URL.
-
-```python
-workflow = Workflow.from_yaml_url(url: str) -> Workflow
-```
-
-**Parameters:**
-- `url` (`str`): URL to YAML workflow file
-
-**Returns:** `Workflow` instance
-
-**Example:**
-```python
-workflow = Workflow.from_yaml_url(
-    "https://example.com/workflows/analyzer.yaml"
-)
+wf = Workflow.from_yaml("workflows/analyzer.yaml")
 ```
 
 ## Instance Methods
 
-### add_node
+### add\_node
 
-Add a node to the workflow.
+Add a single node to the workflow.
 
 ```python
-workflow.add_node(node: Node) -> Workflow
+wf.add_node(node: Node) -> Workflow
 ```
 
-**Parameters:**
-- `node` (`Node`): Node instance (LLMNode, ToolNode, etc.)
+Returns `self` for chaining:
 
-**Returns:** `Workflow` (for chaining)
-
-**Example:**
 ```python
-from fibonacci import LLMNode
-
-node = LLMNode(
-    id="analyzer",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Analyze: {{input.text}}"
-)
-workflow.add_node(node)
+wf.add_node(node_a).add_node(node_b).add_node(node_c)
 ```
 
 ---
 
-### remove_node
+### add\_nodes
+
+Add multiple nodes at once.
+
+```python
+wf.add_nodes(nodes: list[Node]) -> Workflow
+```
+
+**Example:**
+```python
+wf.add_nodes([classifier, router, handler_a, handler_b])
+```
+
+---
+
+### get\_node
+
+Look up a node by ID.
+
+```python
+wf.get_node(node_id: str) -> Node | None
+```
+
+---
+
+### remove\_node
 
 Remove a node from the workflow.
 
 ```python
-workflow.remove_node(node_id: str) -> Workflow
+wf.remove_node(node_id: str) -> Workflow
 ```
-
-**Parameters:**
-- `node_id` (`str`): ID of node to remove
-
-**Returns:** `Workflow` (for chaining)
-
-**Raises:** `WorkflowError` if node not found or has dependents
-
----
-
-### get_node
-
-Get a node by ID.
-
-```python
-workflow.get_node(node_id: str) -> Node | None
-```
-
-**Parameters:**
-- `node_id` (`str`): Node identifier
-
-**Returns:** `Node` instance or `None`
 
 ---
 
 ### validate
 
-Validate workflow configuration.
+Validate the workflow DAG (checks for cycles, missing dependencies, etc.).
 
 ```python
-workflow.validate() -> ValidationResult
+wf.validate() -> bool
 ```
 
-**Returns:** `ValidationResult` with `valid`, `errors`, and `warnings`
-
-**Example:**
-```python
-result = workflow.validate()
-if not result.valid:
-    print(f"Errors: {result.errors}")
-```
-
----
-
-### execute
-
-Execute the workflow synchronously.
+**Returns:** `True` if valid, raises `ValidationError` otherwise.
 
 ```python
-workflow.execute(
-    inputs: dict,
-    timeout: int | None = None,
-    user_id: str | None = None,
-    metadata: dict | None = None
-) -> dict
-```
-
-**Parameters:**
-- `inputs` (`dict`): Input data for the workflow
-- `timeout` (`int`): Execution timeout (overrides workflow default)
-- `user_id` (`str`): User identifier for memory scoping
-- `metadata` (`dict`): Additional execution metadata
-
-**Returns:** `dict` with node outputs keyed by node ID
-
-**Raises:** `WorkflowError`, `NodeExecutionError`, `TimeoutError`, `ValidationError`
-
-**Example:**
-```python
-result = workflow.execute(
-    inputs={"text": "Hello world"},
-    timeout=60,
-    user_id="user-123"
-)
-print(result["analyzer"])
-```
-
----
-
-### execute_async
-
-Execute the workflow asynchronously.
-
-```python
-await workflow.execute_async(
-    inputs: dict,
-    timeout: int | None = None,
-    user_id: str | None = None,
-    metadata: dict | None = None
-) -> dict
-```
-
-**Parameters:** Same as `execute()`
-
-**Returns:** `dict` with node outputs
-
-**Example:**
-```python
-import asyncio
-
-async def main():
-    result = await workflow.execute_async(
-        inputs={"text": "Hello world"}
-    )
-    print(result)
-
-asyncio.run(main())
+if wf.validate():
+    wf.deploy()
 ```
 
 ---
 
 ### deploy
 
-Deploy the workflow to Fibonacci Cloud.
+Deploy the workflow to the Fibonacci platform.
 
 ```python
-workflow.deploy(
-    environment: str = "production",
-    version: str | None = None,
-    message: str | None = None
-) -> DeploymentResult
+wf.deploy(
+    api_key: str | None = None,
+    validate: bool = True
+) -> str
 ```
 
 **Parameters:**
-- `environment` (`str`): Target environment
-- `version` (`str`): Version tag
-- `message` (`str`): Deployment message
+- `api_key` (`str`): API key to use for deployment. Falls back to the configured key if omitted.
+- `validate` (`bool`): Validate the workflow before deploying (default `True`).
 
-**Returns:** `DeploymentResult` with deployment details
+**Returns:** `workflow_id` string — save this to run the workflow later.
 
----
-
-### to_yaml
-
-Export workflow to YAML.
-
-```python
-workflow.to_yaml(path: str | None = None) -> str
-```
-
-**Parameters:**
-- `path` (`str`): Optional file path to write
-
-**Returns:** YAML string
-
----
-
-### to_dict
-
-Export workflow to dictionary.
-
-```python
-workflow.to_dict() -> dict
-```
-
-**Returns:** Dictionary representation of workflow
-
-## Properties
-
-### nodes
-
-List of nodes in the workflow.
-
-```python
-workflow.nodes -> list[Node]
-```
-
----
-
-### memory
-
-Access workflow memory.
-
-```python
-workflow.memory -> MemoryManager
-```
+**Raises:** `AuthenticationError`, `ValidationError`, `DeploymentError`
 
 **Example:**
 ```python
-workflow.memory.set("key", "value", scope="user")
-value = workflow.memory.get("key", scope="user")
+workflow_id = wf.deploy(api_key="fib_live_abc123")
+print(f"Deployed: {workflow_id}")
 ```
 
 ---
 
-### execution_history
+### deploy\_async
 
-Get execution history.
+Async version of `deploy()`.
 
 ```python
-workflow.execution_history -> list[ExecutionRecord]
+workflow_id = await wf.deploy_async(api_key="fib_live_abc123")
 ```
 
-## Hooks
+---
 
-Register lifecycle hooks for workflow events:
+### run
+
+Execute the workflow synchronously.
 
 ```python
-workflow = Workflow(
-    name="hooked-workflow",
-    hooks={
-        "on_start": lambda ctx: print(f"Starting: {ctx.workflow_name}"),
-        "on_node_start": lambda ctx: print(f"Node: {ctx.node_id}"),
-        "on_node_complete": lambda ctx: print(f"Done: {ctx.node_id}"),
-        "on_error": lambda ctx: log_error(ctx.error),
-        "on_complete": lambda ctx: print(f"Finished in {ctx.duration}s")
-    }
+wf.run(
+    input_data: dict,
+    workflow_id: str | None = None,
+    wait: bool = True,
+    timeout: float = 300.0,
+    secrets: dict | None = None
+) -> WorkflowRunStatus
+```
+
+**Parameters:**
+- `input_data` (`dict`): Input data for the workflow.
+- `workflow_id` (`str`): Workflow ID to run. Uses the last deployed workflow if omitted.
+- `wait` (`bool`): Wait for the run to complete before returning (default `True`).
+- `timeout` (`float`): Maximum seconds to wait for completion (default `300.0`).
+- `secrets` (`dict`): Runtime secrets injected into the workflow (e.g. `{"SLACK_TOKEN": "xoxb-..."}`).
+
+**Returns:** `WorkflowRunStatus` with fields:
+- `.status` — `"completed"`, `"failed"`, `"running"`, etc.
+- `.output_data` — dict of node outputs keyed by node ID
+- `.error_message` — error details if status is `"failed"`
+- `.total_cost` — total cost of the run in USD
+- `.nodes_executed` — number of nodes that ran
+
+**Raises:** `AuthenticationError`, `ExecutionError`, `RateLimitError`
+
+**Example:**
+```python
+result = wf.run(
+    input_data={"text": "Hello world"},
+    secrets={"GOOGLE_TOKEN": "my-token"}
 )
+print(result.output_data["analyzer"])
 ```
 
-### Available Hooks
+---
 
-| Hook | Trigger | Context |
-|------|---------|---------|
-| `on_start` | Workflow execution starts | `workflow_name`, `inputs` |
-| `on_node_start` | Node execution starts | `node_id`, `inputs` |
-| `on_node_complete` | Node execution completes | `node_id`, `output`, `duration` |
-| `on_error` | Error occurs | `error`, `node_id`, `partial_results` |
-| `on_complete` | Workflow completes | `outputs`, `duration` |
-| `on_retry` | Retry attempt | `node_id`, `attempt`, `error` |
+### run\_async
+
+Async version of `run()`.
+
+```python
+import asyncio
+
+async def main():
+    result = await wf.run_async(
+        input_data={"text": "Hello world"}
+    )
+    print(result.output_data)
+
+asyncio.run(main())
+```
+
+---
+
+### get\_status
+
+Get the status of a specific run.
+
+```python
+wf.get_status(run_id: str | None = None) -> WorkflowRunStatus
+```
+
+---
+
+### update
+
+Update workflow metadata on the platform.
+
+```python
+wf.update(
+    name: str | None = None,
+    description: str | None = None,
+    is_active: bool | None = None
+) -> WorkflowResponse
+```
+
+---
+
+### delete
+
+Delete the deployed workflow.
+
+```python
+wf.delete() -> bool
+```
+
+---
+
+### activate / deactivate
+
+Toggle a deployed workflow on or off without deleting it.
+
+```python
+wf.activate()    # -> WorkflowResponse
+wf.deactivate()  # -> WorkflowResponse
+```
+
+---
+
+### get\_stats
+
+Get aggregated statistics for the deployed workflow.
+
+```python
+wf.get_stats() -> WorkflowStats
+```
+
+**Returns:** `WorkflowStats` with `.total_runs`, `.success_rate`, `.avg_duration_seconds`, `.avg_cost`.
+
+---
+
+### to\_yaml
+
+Export the workflow to a YAML string (and optionally write to a file).
+
+```python
+yaml_str = wf.to_yaml()            # return string
+wf.to_yaml("exported.yaml")        # write to file
+```
+
+---
+
+### to\_yaml\_string
+
+Export the workflow to a YAML string (always returns a string, never writes).
+
+```python
+yaml_str = wf.to_yaml_string()
+```
+
+---
+
+### to\_dict
+
+Export the workflow as a Python dictionary.
+
+```python
+data = wf.to_dict()
+```
+
+## Properties
+
+### workflow\_id
+
+The ID assigned after deployment. `None` if the workflow has not been deployed yet.
+
+```python
+print(wf.workflow_id)   # e.g. "wf_abc123"
+```
+
+---
+
+### nodes
+
+List of nodes currently in the workflow.
+
+```python
+for node in wf.nodes:
+    print(node.id)
+```
+
+---
+
+### node\_count
+
+Number of nodes in the workflow.
+
+```python
+print(wf.node_count)   # e.g. 4
+```
+
+## YAML Workflows
+
+Load a workflow from a YAML definition file:
+
+```python
+wf = Workflow.from_yaml("workflow.yaml")
+wf.deploy()
+result = wf.run(input_data={"text": "Hello!"})
+```
+
+Export an existing workflow to YAML:
+
+```python
+wf.to_yaml("exported.yaml")
+```
+
+See the [YAML Workflows guide](/guides/yaml-workflows) for the full YAML schema.
 
 ## Complete Example
 
 ```python
-from fibonacci import Workflow, LLMNode, ToolNode, RetryConfig
+from fibonacci import Workflow, LLMNode, ToolNode, ConditionalNode, Config
 
-# Create workflow with full configuration
-workflow = Workflow(
-    name="customer-analyzer",
-    description="Analyzes customer feedback",
-    version="2.0.0",
-    timeout=300,
-    default_retry=RetryConfig(max_attempts=3, delay=1.0),
-    input_schema={
-        "type": "object",
-        "required": ["feedback"],
-        "properties": {
-            "feedback": {"type": "string", "minLength": 1}
-        }
+# Optional: explicit config
+config = Config(api_key="fib_live_abc123")
+
+wf = Workflow(
+    name="feedback-pipeline",
+    description="Classifies and routes customer feedback",
+    version=1,
+    config=config
+)
+
+# Classify
+classify = LLMNode(
+    id="classify",
+    name="Classify Feedback",
+    instruction="Classify as positive, negative, or neutral. One word only.\n\n{{input.feedback}}"
+)
+
+# Route
+router = ConditionalNode(
+    id="router",
+    name="Route by Sentiment",
+    left_value="{{classify}}",
+    operator="contains",
+    right_value="negative",
+    true_branch=["escalate"],
+    false_branch=["log_ok"],
+    dependencies=["classify"]
+)
+
+# Escalate negative
+escalate = ToolNode(
+    id="escalate",
+    name="Alert Support Team",
+    tool="slack_send_message",
+    params={
+        "channel": "#support",
+        "message": "Negative feedback: {{input.feedback}}"
     },
-    hooks={
-        "on_error": lambda ctx: print(f"Error: {ctx.error}")
-    }
+    dependencies=["router"]
 )
 
-# Add nodes
-sentiment = LLMNode(
-    id="sentiment",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Analyze sentiment: {{input.feedback}}"
-)
-
-categorize = LLMNode(
-    id="categorize",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Categorize: {{input.feedback}}\nSentiment: {{sentiment}}",
-    dependencies=["sentiment"]
-)
-
-notify = ToolNode(
-    id="notify",
-    tool="slack.post_message",
-    inputs={
-        "channel": "#feedback",
-        "message": "New {{categorize}} feedback ({{sentiment}})"
+# Log positive/neutral
+log_ok = ToolNode(
+    id="log_ok",
+    name="Log Feedback",
+    tool="google_sheets_append",
+    params={
+        "spreadsheet_id": "{{input.log_sheet}}",
+        "range": "Log!A:C",
+        "values": [["{{input.feedback}}", "{{classify}}"]]
     },
-    dependencies=["sentiment", "categorize"]
+    dependencies=["router"]
 )
 
-workflow.add_node(sentiment)
-workflow.add_node(categorize)
-workflow.add_node(notify)
+wf.add_nodes([classify, router, escalate, log_ok])
 
-# Validate
-validation = workflow.validate()
-if validation.valid:
-    # Execute
-    result = workflow.execute(
-        inputs={"feedback": "Great product!"},
-        user_id="customer-456"
-    )
-    print(result)
+# Validate before deploying
+wf.validate()
+
+# Deploy
+workflow_id = wf.deploy()
+print(f"Deployed: {workflow_id}")
+
+# Run
+result = wf.run(
+    input_data={"feedback": "Great product!", "log_sheet": "abc123"}
+)
+print(result.output_data)
+print(f"Cost: ${result.total_cost:.4f}")
+
+# Lifecycle management
+stats = wf.get_stats()
+print(f"Total runs: {stats.total_runs}, success rate: {stats.success_rate:.0%}")
+
+# Deactivate when not needed
+wf.deactivate()
 ```

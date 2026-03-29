@@ -1,9 +1,9 @@
 ---
 title: "Tool Integrations"
-description: "Connect to 100+ services with ToolNodes"
+description: "Connect workflows to external services with ToolNodes"
 ---
 
-ToolNodes let you interact with external services like Google Sheets, Slack, databases, and APIs.
+ToolNodes let you interact with external services like Google Sheets, Slack, Notion, databases, and HTTP APIs. Use `list_tools()` to see every tool available on your platform.
 
 ## Using ToolNodes
 
@@ -209,18 +209,15 @@ send_email = ToolNode(
         "subject": "Your Report is Ready",
         "body": """
         Hi {{input.recipient_name}},
-        
-        Your weekly report is attached.
-        
+
+        Your weekly report is ready.
+
         Summary:
         {{executive_summary}}
-        
+
         Best,
         Fibonacci Bot
-        """,
-        "attachments": [
-            {"name": "report.pdf", "content": "{{report_pdf}}"}
-        ]
+        """
     }
 )
 ```
@@ -279,20 +276,6 @@ slack_rich = ToolNode(
 ```
 
 </CodeGroup>
-
-### Discord
-
-```python
-discord_msg = ToolNode(
-    id="discord_alert",
-    name="Discord Alert",
-    tool="discord_send",
-    params={
-        "webhook_url": "{{input.webhook}}",
-        "content": "Alert: {{analyze_data}}"
-    }
-)
-```
 
 ---
 
@@ -477,14 +460,14 @@ for cat in categories:
 
 Output:
 ```
-google_workspace: 12 tools
+google_workspace: 7 tools
   Examples: google_sheets_read, google_docs_read, gmail_send
-communication: 8 tools
-  Examples: slack_send_message, discord_send, twilio_sms
-databases: 5 tools
+communication: 3 tools
+  Examples: slack_send_message, slack_upload_file, slack_create_channel
+databases: 3 tools
   Examples: database_query, mongodb_find, redis_get
-cloud_storage: 6 tools
-  Examples: s3_upload, gcs_upload, azure_blob
+cloud_storage: 2 tools
+  Examples: s3_upload, s3_download
 ...
 ```
 
@@ -511,7 +494,7 @@ slow_api = ToolNode(
     name="Slow API",
     tool="http_request",
     params={...},
-    timeout=60  # 60 seconds timeout
+    timeout=60  # override the 30s default
 )
 ```
 

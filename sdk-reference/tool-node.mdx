@@ -1,9 +1,9 @@
 ---
 title: 'ToolNode'
-description: 'Node for external tool and API integrations'
+description: 'Node for executing external tool and API integrations'
 ---
 
-The `ToolNode` class executes external tool integrations, connecting workflows to services like Google Workspace, Slack, databases, and HTTP APIs.
+The `ToolNode` class runs a Fibonacci platform tool — connecting workflows to services like Google Sheets, Slack, databases, and HTTP APIs.
 
 ## Constructor
 
@@ -12,8 +12,9 @@ from fibonacci import ToolNode
 
 node = ToolNode(
     id="fetch_data",
-    tool="google_sheets.read_range",
-    inputs={
+    name="Fetch Sheet Data",
+    tool="google_sheets_read",
+    params={
         "spreadsheet_id": "{{input.sheet_id}}",
         "range": "A1:D100"
     }
@@ -24,79 +25,124 @@ node = ToolNode(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `id` | `str` | Required | Unique node identifier |
-| `tool` | `str` | Required | Tool identifier (e.g., "slack.post_message") |
-| `inputs` | `dict` | Required | Tool input parameters |
-| `dependencies` | `list[str]` | `[]` | IDs of nodes this depends on |
-| `retry` | `RetryConfig` | `None` | Retry configuration |
-| `timeout` | `int` | `None` | Execution timeout in seconds |
-| `fallback` | `str` | `None` | Fallback node ID on failure |
-| `on_error` | `str` | `None` | Error handler node ID |
-| `condition` | `dict` | `None` | Conditional execution |
+| `id` | `str` | Required | Unique node identifier (lowercase letters, numbers, underscores, hyphens) |
+| `name` | `str` | Required | Human-readable node name |
+| `tool` | `str` | Required | Tool name (e.g., `"google_sheets_read"`, `"slack_send_message"`) |
+| `params` | `dict` | Required | Input parameters for the tool — supports `{{variable}}` template syntax |
+| `timeout` | `int` | `30` | Execution timeout in seconds |
+| `dependencies` | `list[str]` | `[]` | Node IDs this node waits for before running |
+| `enable_retry` | `bool` | `False` | Retry on failure |
+| `max_retries` | `int` | `3` | Maximum retry attempts (used when `enable_retry=True`) |
+| `retry_delay` | `float` | `1.0` | Initial delay in seconds between retries |
+
+<Note>
+  Tool names use **underscore format** (e.g., `google_sheets_read`, `slack_send_message`). Use `list_tools()` or `print_tool_info()` to see available tools and their exact names.
+</Note>
+
+## Template Variables in Params
+
+Any value in `params` can reference dynamic data:
+
+```python
+node = ToolNode(
+    id="notify",
+    name="Send Notification",
+    tool="slack_send_message",
+    params={
+        "channel": "#{{input.team}}",
+        "message": "Analysis complete: {{analyze_data}}"
+    }
+)
+```
+
+| Syntax | Source |
+|--------|--------|
+| `{{input.field}}` | Workflow input data |
+| `{{node_id}}` | Full output of another node |
+| `{{node_id.field}}` | Specific field from a node's JSON output |
 
 ## Tool Categories
 
 ### Google Workspace
 
 ```python
-# Google Sheets - Read
+# Read from Google Sheets
 read_sheet = ToolNode(
     id="read_sheet",
-    tool="google_sheets.read_range",
-    inputs={
-        "spreadsheet_id": "abc123",
+    name="Read Sheet",
+    tool="google_sheets_read",
+    params={
+        "spreadsheet_id": "{{input.sheet_id}}",
         "range": "Sheet1!A1:D100"
     }
 )
 
-# Google Sheets - Write
+# Write to Google Sheets
 write_sheet = ToolNode(
     id="write_sheet",
-    tool="google_sheets.write_range",
-    inputs={
-        "spreadsheet_id": "abc123",
-        "range": "Sheet1!A1",
-        "values": "{{analyzer.data}}"
+    name="Write Results",
+    tool="google_sheets_write",
+    params={
+        "spreadsheet_id": "{{input.sheet_id}}",
+        "range": "Results!A1",
+        "values": [["Name", "Score"], ["Alice", "95"]]
     }
 )
 
-# Google Drive - Search
-search_drive = ToolNode(
-    id="search_files",
-    tool="google_drive.search",
-    inputs={
-        "query": "type:document name contains 'report'"
+# Append rows
+append_row = ToolNode(
+    id="append_row",
+    name="Append Log Row",
+    tool="google_sheets_append",
+    params={
+        "spreadsheet_id": "{{input.sheet_id}}",
+        "range": "Log!A:D",
+        "values": [["{{input.id}}", "{{analyze_data}}"]]
     }
 )
 
-# Google Drive - Download
-download = ToolNode(
-    id="download",
-    tool="google_drive.download",
-    inputs={
-        "file_id": "{{search_files.0.id}}"
+# Read a Google Doc
+read_doc = ToolNode(
+    id="read_doc",
+    name="Read Document",
+    tool="google_docs_read",
+    params={
+        "document_id": "{{input.doc_id}}"
     }
 )
 
-# Gmail - Send
+# Create a Google Doc
+create_doc = ToolNode(
+    id="create_doc",
+    name="Create Document",
+    tool="google_docs_create",
+    params={
+        "title": "{{input.title}}",
+        "content": "{{generate_report}}"
+    }
+)
+
+# Send email via Gmail
 send_email = ToolNode(
     id="send_email",
-    tool="gmail.send",
-    inputs={
-        "to": "user@example.com",
-        "subject": "Analysis Complete",
-        "body": "{{analyzer}}"
+    name="Send Email",
+    tool="gmail_send",
+    params={
+        "to": "recipient@example.com",
+        "subject": "Your Report is Ready",
+        "body": "{{executive_summary}}"
     }
 )
 
-# Google Calendar - Create Event
+# Create a Google Calendar event
 create_event = ToolNode(
-    id="schedule",
-    tool="google_calendar.create_event",
-    inputs={
+    id="create_event",
+    name="Schedule Meeting",
+    tool="google_calendar_create_event",
+    params={
         "summary": "Follow-up Meeting",
-        "start": "2025-01-25T10:00:00",
-        "end": "2025-01-25T11:00:00",
+        "start": "2025-06-01T10:00:00",
+        "end": "2025-06-01T11:00:00",
         "attendees": ["team@company.com"]
     }
 )
@@ -105,93 +151,60 @@ create_event = ToolNode(
 ### Communication
 
 ```python
-# Slack - Post Message
-slack_message = ToolNode(
-    id="notify_slack",
-    tool="slack.post_message",
-    inputs={
-        "channel": "#notifications",
-        "message": "Analysis complete: {{analyzer}}"
+# Slack — send a message
+slack_msg = ToolNode(
+    id="notify_team",
+    name="Notify Team",
+    tool="slack_send_message",
+    params={
+        "channel": "#team-updates",
+        "message": "Report ready: {{executive_summary}}"
     }
 )
 
-# Slack - Upload File
-slack_file = ToolNode(
-    id="upload_report",
-    tool="slack.upload_file",
-    inputs={
-        "channel": "#reports",
-        "file_content": "{{report}}",
-        "filename": "report.txt"
-    }
-)
-
-# Microsoft Teams
-teams_message = ToolNode(
-    id="teams_notify",
-    tool="teams.post_message",
-    inputs={
-        "channel_id": "channel-123",
-        "message": "{{summary}}"
-    }
-)
-
-# Email (SMTP)
-email = ToolNode(
-    id="send_email",
-    tool="email.send",
-    inputs={
-        "to": "recipient@example.com",
-        "subject": "Report Ready",
-        "body": "{{report}}",
-        "html": True
+# Slack — DM a user
+slack_dm = ToolNode(
+    id="dm_user",
+    name="DM User",
+    tool="slack_send_message",
+    params={
+        "channel": "@john.doe",
+        "message": "Your task is complete."
     }
 )
 ```
 
-### HTTP Requests
+### HTTP & APIs
 
 ```python
-# GET Request
-get_data = ToolNode(
-    id="fetch_api",
-    tool="http.request",
-    inputs={
-        "method": "GET",
+# Generic HTTP request
+api_call = ToolNode(
+    id="call_api",
+    name="Call External API",
+    tool="http_request",
+    params={
+        "method": "POST",
         "url": "https://api.example.com/data",
         "headers": {
-            "Authorization": "Bearer {{secrets.API_KEY}}"
-        }
-    }
-)
-
-# POST Request
-post_data = ToolNode(
-    id="submit_data",
-    tool="http.request",
-    inputs={
-        "method": "POST",
-        "url": "https://api.example.com/submit",
-        "headers": {
+            "Authorization": "Bearer {{input.api_token}}",
             "Content-Type": "application/json"
         },
         "body": {
-            "result": "{{analyzer}}",
-            "timestamp": "{{now}}"
+            "query": "{{input.search_term}}"
         }
     }
 )
 
-# With Authentication
-auth_request = ToolNode(
-    id="auth_api",
-    tool="http.request",
-    inputs={
-        "method": "GET",
-        "url": "https://api.example.com/secure",
-        "auth": {
-            "type": "oauth2",
-            "token": "{{secrets.ACCESS_TOKEN}}"
+# Webhook
+webhook = ToolNode(
+    id="trigger_webhook",
+    name="Trigger Webhook",
+    tool="webhook_call",
+    params={
+        "url": "https://hooks.zapier.com/hooks/catch/123/abc",
+        "payload": {
+            "event": "report_generated",
+            "data": "{{report_data}}"
         }
     }
 )
@@ -200,88 +213,52 @@ auth_request = ToolNode(
 ### Databases
 
 ```python
-# PostgreSQL - Query
-pg_query = ToolNode(
+query = ToolNode(
     id="query_db",
-    tool="postgres.query",
-    inputs={
-        "connection": "{{secrets.DATABASE_URL}}",
-        "query": "SELECT * FROM customers WHERE status = $1",
-        "params": ["active"]
-    }
-)
-
-# PostgreSQL - Insert
-pg_insert = ToolNode(
-    id="insert_record",
-    tool="postgres.insert",
-    inputs={
-        "connection": "{{secrets.DATABASE_URL}}",
-        "table": "analysis_results",
-        "data": {
-            "input": "{{input.text}}",
-            "result": "{{analyzer}}",
-            "created_at": "{{now}}"
-        }
-    }
-)
-
-# MongoDB
-mongo_query = ToolNode(
-    id="mongo_find",
-    tool="mongodb.find",
-    inputs={
-        "connection": "{{secrets.MONGO_URI}}",
-        "collection": "documents",
-        "filter": {"status": "pending"},
-        "limit": 100
-    }
-)
-
-# Redis
-redis_get = ToolNode(
-    id="cache_get",
-    tool="redis.get",
-    inputs={
-        "connection": "{{secrets.REDIS_URL}}",
-        "key": "cached:{{input.id}}"
+    name="Query Database",
+    tool="database_query",
+    params={
+        "connection_string": "{{secrets.DATABASE_URL}}",
+        "query": """
+            SELECT customer_id, SUM(amount) AS total
+            FROM orders
+            WHERE date >= '{{input.start_date}}'
+            GROUP BY customer_id
+            ORDER BY total DESC
+            LIMIT 10
+        """
     }
 )
 ```
 
+<Warning>
+  Never hardcode database credentials. Use the `secrets` parameter in `wf.run()` or the Fibonacci secrets manager.
+</Warning>
+
 ### Cloud Storage
 
 ```python
-# AWS S3 - Upload
+# Upload to S3
 s3_upload = ToolNode(
     id="upload_s3",
-    tool="s3.upload",
-    inputs={
-        "bucket": "my-bucket",
-        "key": "reports/{{input.id}}.json",
-        "body": "{{report}}",
-        "content_type": "application/json"
+    name="Upload to S3",
+    tool="s3_upload",
+    params={
+        "bucket": "my-reports",
+        "key": "reports/{{input.report_id}}.pdf",
+        "content": "{{report_pdf}}",
+        "content_type": "application/pdf"
     }
 )
 
-# AWS S3 - Download
+# Download from S3
 s3_download = ToolNode(
     id="download_s3",
-    tool="s3.download",
-    inputs={
-        "bucket": "my-bucket",
-        "key": "data/{{input.filename}}"
-    }
-)
-
-# Google Cloud Storage
-gcs_upload = ToolNode(
-    id="upload_gcs",
-    tool="gcs.upload",
-    inputs={
-        "bucket": "my-bucket",
-        "path": "exports/{{input.id}}.csv",
-        "content": "{{exporter}}"
+    name="Download from S3",
+    tool="s3_download",
+    params={
+        "bucket": "my-data",
+        "key": "data/{{input.file_name}}"
     }
 )
 ```
@@ -289,48 +266,47 @@ gcs_upload = ToolNode(
 ### CRM & Business
 
 ```python
-# Salesforce - Query
-sf_query = ToolNode(
-    id="sf_accounts",
-    tool="salesforce.query",
-    inputs={
-        "query": "SELECT Id, Name FROM Account WHERE Type = 'Customer'"
-    }
-)
-
-# Salesforce - Create
-sf_create = ToolNode(
+# Create a Salesforce lead
+create_lead = ToolNode(
     id="create_lead",
-    tool="salesforce.create",
-    inputs={
+    name="Create Salesforce Lead",
+    tool="salesforce_create",
+    params={
         "object": "Lead",
         "data": {
             "FirstName": "{{input.first_name}}",
             "LastName": "{{input.last_name}}",
+            "Email": "{{input.email}}",
             "Company": "{{input.company}}"
         }
     }
 )
 
-# HubSpot
-hubspot = ToolNode(
-    id="create_contact",
-    tool="hubspot.create_contact",
-    inputs={
+# Update a HubSpot contact
+hubspot_contact = ToolNode(
+    id="update_contact",
+    name="Update HubSpot Contact",
+    tool="hubspot_update_contact",
+    params={
         "email": "{{input.email}}",
         "properties": {
-            "firstname": "{{input.name}}",
-            "company": "{{input.company}}"
+            "lead_score": "{{score_lead}}"
         }
     }
 )
 
-# Stripe
-stripe_customer = ToolNode(
-    id="get_customer",
-    tool="stripe.get_customer",
-    inputs={
-        "customer_id": "{{input.customer_id}}"
+# Create a Notion page
+notion_page = ToolNode(
+    id="create_notion",
+    name="Create Notion Page",
+    tool="notion_create_page",
+    params={
+        "database_id": "{{input.database_id}}",
+        "properties": {
+            "Name": "{{input.title}}",
+            "Status": "Ready"
+        },
+        "content": "{{generate_notes}}"
     }
 )
 ```
@@ -340,15 +316,17 @@ stripe_customer = ToolNode(
 ### List Available Tools
 
 ```python
-from fibonacci import list_tools
+from fibonacci import list_tools, list_tool_categories
 
-# List all tools
+# All tools
 tools = list_tools()
 for tool in tools:
-    print(f"{tool.name}: {tool.description}")
+    print(f"{tool['name']}: {tool['description']}")
 
-# Filter by category
-google_tools = list_tools(category="google")
+# By category
+categories = list_tool_categories()
+for cat in categories:
+    print(f"{cat['name']}: {cat['count']} tools")
 ```
 
 ### Search Tools
@@ -356,164 +334,184 @@ google_tools = list_tools(category="google")
 ```python
 from fibonacci import search_tools
 
-# Search by description
-results = search_tools("send email")
+results = search_tools("slack")
 for tool in results:
-    print(f"{tool.name}: {tool.description}")
+    print(f"{tool['name']}: {tool['description']}")
 ```
 
-### Get Tool Info
+### Inspect a Tool
 
 ```python
 from fibonacci import print_tool_info
 
-# Print detailed tool information
-print_tool_info("google_sheets.read_range")
+print_tool_info("google_sheets_read")
 ```
 
 Output:
 ```
-Tool: google_sheets.read_range
-Description: Read data from a Google Sheets range
+======================================================================
+🔧 google_sheets_read
+======================================================================
+Category: google_workspace
+Description: Read data from a Google Sheets spreadsheet
 
-Parameters:
-  - spreadsheet_id (string, required): The spreadsheet ID
-  - range (string, required): A1 notation range (e.g., "Sheet1!A1:D100")
-  
-Returns:
-  - values: 2D array of cell values
-  - metadata: Sheet metadata
+📥 Input Parameters:
+  • spreadsheet_id (string) - required
+  • range (string) - required
+    A1 notation range (e.g., "Sheet1!A1:D10")
+
+📖 Examples:
+  1. Read sales data
+     Params: {"spreadsheet_id": "abc123", "range": "Sales!A1:E100"}
+======================================================================
 ```
 
-## Dynamic Inputs
-
-Use template variables for dynamic tool inputs:
+### Find the Right Tool
 
 ```python
-node = ToolNode(
-    id="dynamic_query",
-    tool="postgres.query",
-    inputs={
-        "connection": "{{secrets.DATABASE_URL}}",
-        "query": "SELECT * FROM {{input.table}} WHERE id = $1",
-        "params": ["{{input.id}}"]
-    }
+from fibonacci import find_tool_for_task
+
+tool = find_tool_for_task("send a message to slack")
+print(tool)  # "slack_send_message"
+
+tool = find_tool_for_task("read data from google sheets")
+print(tool)  # "google_sheets_read"
+```
+
+## Dependencies
+
+```python
+# Read data
+read = ToolNode(
+    id="read_source",
+    name="Read Source Sheet",
+    tool="google_sheets_read",
+    params={"spreadsheet_id": "...", "range": "A1:Z100"}
+)
+
+# Write results (waits for read to finish)
+write = ToolNode(
+    id="write_dest",
+    name="Write Destination Sheet",
+    tool="google_sheets_write",
+    params={
+        "spreadsheet_id": "...",
+        "range": "A1",
+        "values": "{{read_source}}"
+    },
+    dependencies=["read_source"]
 )
 ```
 
-## Error Handling
-
-### Retry Configuration
+## Timeout Configuration
 
 ```python
-from fibonacci import ToolNode, RetryConfig
+slow_api = ToolNode(
+    id="slow_api",
+    name="Long-Running API",
+    tool="http_request",
+    params={"url": "https://api.example.com/slow-endpoint"},
+    timeout=120   # override the 30s default
+)
+```
 
-node = ToolNode(
+## Retry Configuration
+
+```python
+# Via constructor
+api_call = ToolNode(
     id="api_call",
-    tool="http.request",
-    inputs={"url": "https://api.example.com"},
-    retry=RetryConfig(
-        max_attempts=5,
-        delay=1.0,
-        backoff="exponential",
-        max_delay=30.0,
-        retry_on=["timeout", "5xx", "rate_limit"]
-    )
-)
-```
-
-### Fallback
-
-```python
-primary = ToolNode(
-    id="primary_api",
-    tool="http.request",
-    inputs={"url": "https://primary.api.com"},
-    fallback="backup_api"
+    name="Reliable API Call",
+    tool="http_request",
+    params={"url": "https://api.example.com"},
+    enable_retry=True,
+    max_retries=5,
+    retry_delay=2.0
 )
 
-backup = ToolNode(
-    id="backup_api",
-    tool="http.request",
-    inputs={"url": "https://backup.api.com"}
-)
+# Via fluent method
+api_call = ToolNode(
+    id="api_call",
+    name="Reliable API Call",
+    tool="http_request",
+    params={"url": "https://api.example.com"}
+).with_retry(max_retries=5, delay=2.0)
 ```
 
 ## Conditional Execution
 
 ```python
-node = ToolNode(
+notify_urgent = ToolNode(
     id="notify_urgent",
-    tool="slack.post_message",
-    inputs={
+    name="Notify Urgent",
+    tool="slack_send_message",
+    params={
         "channel": "#urgent",
         "message": "Urgent issue: {{analyzer}}"
-    },
-    condition={
-        "field": "{{analyzer.urgency}}",
-        "operator": "equals",
-        "value": "high"
     }
+).with_condition(
+    left_value="{{analyzer_urgency}}",
+    operator="equals",
+    right_value="high"
 )
+```
+
+## YAML Configuration
+
+```yaml
+nodes:
+  - id: notify
+    name: Notify Team
+    type: tool
+    tool_name: slack_send_message
+    tool_params:
+      channel: "#analytics"
+      message: "Analysis complete: {{analyze}}"
+    dependencies:
+      - analyze
 ```
 
 ## Complete Example
 
 ```python
-from fibonacci import Workflow, LLMNode, ToolNode, RetryConfig
+from fibonacci import Workflow, LLMNode, ToolNode
 
-workflow = Workflow(name="data-pipeline")
+wf = Workflow(name="data-pipeline")
 
-# Fetch data from Google Sheets
-fetch_data = ToolNode(
+# Fetch data
+fetch = ToolNode(
     id="fetch_data",
-    tool="google_sheets.read_range",
-    inputs={
+    name="Read Sheet",
+    tool="google_sheets_read",
+    params={
         "spreadsheet_id": "{{input.sheet_id}}",
         "range": "Data!A1:Z1000"
-    },
-    retry=RetryConfig(max_attempts=3)
+    }
 )
 
 # Analyze with LLM
 analyze = LLMNode(
     id="analyze",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Analyze this data and find insights: {{fetch_data}}",
+    name="Analyze Data",
+    instruction="Analyze this data and find key insights: {{fetch_data}}",
+    model="claude-sonnet-4-6",
     dependencies=["fetch_data"]
-)
-
-# Store results in database
-store_results = ToolNode(
-    id="store",
-    tool="postgres.insert",
-    inputs={
-        "connection": "{{secrets.DATABASE_URL}}",
-        "table": "analysis_results",
-        "data": {
-            "sheet_id": "{{input.sheet_id}}",
-            "analysis": "{{analyze}}",
-            "created_at": "{{now}}"
-        }
-    },
-    dependencies=["analyze"]
 )
 
 # Notify via Slack
 notify = ToolNode(
     id="notify",
-    tool="slack.post_message",
-    inputs={
+    name="Send Report",
+    tool="slack_send_message",
+    params={
         "channel": "#analytics",
         "message": "Analysis complete for {{input.sheet_id}}:\n{{analyze}}"
     },
     dependencies=["analyze"]
 )
 
-workflow.add_node(fetch_data)
-workflow.add_node(analyze)
-workflow.add_node(store_results)
-workflow.add_node(notify)
+wf.add_nodes([fetch, analyze, notify])
 
-result = workflow.execute(inputs={"sheet_id": "abc123"})
+result = wf.run(input_data={"sheet_id": "abc123"})
+print(result.output_data)
 ```

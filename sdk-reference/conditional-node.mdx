@@ -1,9 +1,9 @@
 ---
 title: 'ConditionalNode'
-description: 'Node for branching logic and conditional execution'
+description: 'Node for branching workflow execution based on a condition'
 ---
 
-The `ConditionalNode` class enables conditional branching in workflows, routing execution to different nodes based on runtime conditions.
+The `ConditionalNode` class branches workflow execution based on a single condition, routing to one set of nodes when the condition is true and another when it is false.
 
 ## Constructor
 
@@ -11,18 +11,14 @@ The `ConditionalNode` class enables conditional branching in workflows, routing 
 from fibonacci import ConditionalNode
 
 node = ConditionalNode(
-    id="router",
-    conditions=[
-        {
-            "if": {"field": "{{sentiment}}", "operator": "equals", "value": "positive"},
-            "then": "positive_handler"
-        },
-        {
-            "if": {"field": "{{sentiment}}", "operator": "equals", "value": "negative"},
-            "then": "negative_handler"
-        }
-    ],
-    default="neutral_handler"
+    id="check_sentiment",
+    name="Check Sentiment",
+    left_value="{{analyze_sentiment}}",
+    operator="contains",
+    right_value="positive",
+    true_branch=["celebrate"],
+    false_branch=["investigate"],
+    dependencies=["analyze_sentiment"]
 )
 ```
 
@@ -30,303 +26,242 @@ node = ConditionalNode(
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
-| `id` | `str` | Required | Unique node identifier |
-| `conditions` | `list[dict]` | Required | List of condition-action pairs |
-| `default` | `str` | `None` | Default node if no conditions match |
-| `dependencies` | `list[str]` | `[]` | Nodes this depends on |
+| `id` | `str` | Required | Unique node identifier (lowercase letters, numbers, underscores, hyphens) |
+| `name` | `str` | Required | Human-readable node name |
+| `left_value` | `str` | Required | Left side of the condition — supports template variables like `{{node_id}}` or `{{input.field}}` |
+| `operator` | `str` | Required | Comparison operator (see table below) |
+| `right_value` | `str` | `""` | Right side of the condition — leave empty for `is_empty` / `is_not_empty` operators |
+| `true_branch` | `list[str]` | `[]` | Node IDs to execute when the condition is **true** |
+| `false_branch` | `list[str]` | `[]` | Node IDs to execute when the condition is **false** |
+| `dependencies` | `list[str]` | `[]` | Node IDs this node waits for before running |
+| `enable_retry` | `bool` | `False` | Retry on failure |
+| `max_retries` | `int` | `3` | Maximum retry attempts (used when `enable_retry=True`) |
+| `retry_delay` | `float` | `1.0` | Initial delay in seconds between retries |
 
-## Condition Structure
+## Supported Operators
 
-Each condition has an `if` clause and a `then` action:
-
-```python
-{
-    "if": {
-        "field": "{{source.field}}",     # Value to evaluate
-        "operator": "equals",             # Comparison operator
-        "value": "expected_value"         # Value to compare against
-    },
-    "then": "target_node_id"              # Node to execute if true
-}
-```
-
-## Operators
+The `operator` field accepts exactly these 10 values:
 
 | Operator | Description | Example |
 |----------|-------------|---------|
-| `equals` | Exact match | `"positive"` equals `"positive"` |
-| `not_equals` | Not equal | `"spam"` not_equals `"ham"` |
-| `contains` | String contains | `"hello world"` contains `"world"` |
-| `not_contains` | String doesn't contain | `"hello"` not_contains `"bye"` |
-| `starts_with` | String prefix | `"hello"` starts_with `"hel"` |
-| `ends_with` | String suffix | `"hello"` ends_with `"llo"` |
-| `greater_than` | Numeric greater | `10` greater_than `5` |
-| `less_than` | Numeric less | `5` less_than `10` |
-| `greater_than_or_equals` | >= comparison | `10` >= `10` |
-| `less_than_or_equals` | <= comparison | `5` <= `10` |
-| `is_empty` | Empty/null check | `""` is_empty |
-| `is_not_empty` | Not empty check | `"text"` is_not_empty |
-| `in` | Value in list | `"a"` in `["a", "b", "c"]` |
-| `not_in` | Value not in list | `"d"` not_in `["a", "b", "c"]` |
-| `matches` | Regex match | `"test@email.com"` matches `".*@.*\\.com"` |
+| `equals` | Exact string or numeric match | `"completed"` equals `"completed"` |
+| `not_equals` | Not equal | `"pending"` not\_equals `"completed"` |
+| `contains` | Left value contains right value as a substring | `"error on line 5"` contains `"error"` |
+| `not_contains` | Left value does **not** contain right value | `"success"` not\_contains `"error"` |
+| `greater_than` | Numeric greater-than | `100` greater\_than `50` |
+| `less_than` | Numeric less-than | `25` less\_than `50` |
+| `starts_with` | Left value starts with right value | `"error: msg"` starts\_with `"error"` |
+| `ends_with` | Left value ends with right value | `"report.pdf"` ends\_with `".pdf"` |
+| `is_empty` | Left value is empty or null (`right_value` is ignored) | `""` is\_empty |
+| `is_not_empty` | Left value has a non-empty value (`right_value` is ignored) | `"some text"` is\_not\_empty |
+
+<Warning>
+  Only these 10 operators are supported. Using any other string will raise a `ValidationError` at workflow build time.
+</Warning>
 
 ## Basic Examples
 
-### Simple Branching
+### Simple True/False Branch
 
 ```python
-from fibonacci import Workflow, LLMNode, ConditionalNode
+from fibonacci import Workflow, LLMNode, ToolNode, ConditionalNode
 
-workflow = Workflow(name="sentiment-router")
+wf = Workflow(name="feedback-router")
 
-# Analyze sentiment
-analyzer = LLMNode(
-    id="sentiment",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Classify sentiment as positive/negative/neutral: {{input.text}}"
+# Step 1: Classify the feedback
+classify = LLMNode(
+    id="classify",
+    name="Classify Feedback",
+    instruction="Classify this feedback as positive or negative. Reply with one word only.\n\n{{input.feedback}}"
 )
 
-# Route based on sentiment
+# Step 2: Route based on result
 router = ConditionalNode(
     id="router",
-    conditions=[
-        {
-            "if": {"field": "{{sentiment}}", "operator": "contains", "value": "positive"},
-            "then": "positive_response"
-        },
-        {
-            "if": {"field": "{{sentiment}}", "operator": "contains", "value": "negative"},
-            "then": "negative_response"
-        }
-    ],
-    default="neutral_response",
-    dependencies=["sentiment"]
+    name="Route Feedback",
+    left_value="{{classify}}",
+    operator="contains",
+    right_value="negative",
+    true_branch=["escalate"],
+    false_branch=["log_ok"],
+    dependencies=["classify"]
 )
 
-# Handler nodes
-positive = LLMNode(
-    id="positive_response",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Generate an enthusiastic response to: {{input.text}}"
+# True branch
+escalate = ToolNode(
+    id="escalate",
+    name="Escalate to Support",
+    tool="slack_send_message",
+    params={
+        "channel": "#support",
+        "message": "Negative feedback: {{input.feedback}}"
+    },
+    dependencies=["router"]
 )
 
-negative = LLMNode(
-    id="negative_response",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Generate an empathetic response to: {{input.text}}"
+# False branch
+log_ok = ToolNode(
+    id="log_ok",
+    name="Log Positive Feedback",
+    tool="google_sheets_append",
+    params={
+        "spreadsheet_id": "{{input.sheet_id}}",
+        "range": "Log!A:B",
+        "values": [["{{input.feedback}}", "positive"]]
+    },
+    dependencies=["router"]
 )
 
-neutral = LLMNode(
-    id="neutral_response",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Generate a helpful response to: {{input.text}}"
+wf.add_nodes([classify, router, escalate, log_ok])
+```
+
+### Numeric Threshold
+
+```python
+check_score = ConditionalNode(
+    id="check_score",
+    name="Score Threshold",
+    left_value="{{evaluate}}",
+    operator="greater_than",
+    right_value="7",
+    true_branch=["publish"],
+    false_branch=["revise"],
+    dependencies=["evaluate"]
 )
 ```
 
-### Numeric Comparison
+### String Prefix/Suffix Check
 
 ```python
-router = ConditionalNode(
-    id="score_router",
-    conditions=[
-        {
-            "if": {"field": "{{analyzer.score}}", "operator": "greater_than_or_equals", "value": 90},
-            "then": "excellent_handler"
-        },
-        {
-            "if": {"field": "{{analyzer.score}}", "operator": "greater_than_or_equals", "value": 70},
-            "then": "good_handler"
-        },
-        {
-            "if": {"field": "{{analyzer.score}}", "operator": "greater_than_or_equals", "value": 50},
-            "then": "average_handler"
-        }
-    ],
-    default="needs_improvement_handler",
-    dependencies=["analyzer"]
+check_type = ConditionalNode(
+    id="check_type",
+    name="Check File Type",
+    left_value="{{input.filename}}",
+    operator="ends_with",
+    right_value=".pdf",
+    true_branch=["process_pdf"],
+    false_branch=["unsupported_format"]
 )
 ```
 
-### String Matching
+### Empty Value Guard
 
 ```python
-router = ConditionalNode(
-    id="category_router",
-    conditions=[
-        {
-            "if": {"field": "{{input.email}}", "operator": "ends_with", "value": "@company.com"},
-            "then": "internal_handler"
-        },
-        {
-            "if": {"field": "{{input.email}}", "operator": "matches", "value": ".*@(gmail|yahoo|hotmail)\\.com"},
-            "then": "personal_handler"
-        }
-    ],
-    default="external_handler"
+check_data = ConditionalNode(
+    id="check_data",
+    name="Data Present?",
+    left_value="{{fetch_data}}",
+    operator="is_not_empty",
+    right_value="",   # ignored for is_empty / is_not_empty
+    true_branch=["process_data"],
+    false_branch=["send_no_data_alert"]
 )
 ```
 
-## Multiple Conditions
+## Chaining Conditions (AND / OR Logic)
 
-### AND Logic
+The `ConditionalNode` evaluates a single condition. Chain multiple nodes together to build AND / OR logic.
 
-Chain nodes to create AND conditions:
+### AND Logic — chain nodes
 
 ```python
-# First check
+# First check: sentiment negative?
 check_sentiment = ConditionalNode(
     id="check_sentiment",
-    conditions=[
-        {
-            "if": {"field": "{{analyzer.sentiment}}", "operator": "equals", "value": "negative"},
-            "then": "check_urgency"
-        }
-    ],
-    default="standard_response",
-    dependencies=["analyzer"]
+    name="Negative Sentiment?",
+    left_value="{{analyze}}",
+    operator="contains",
+    right_value="negative",
+    true_branch=["check_urgency"],   # only continue AND chain when true
+    false_branch=["standard_response"],
+    dependencies=["analyze"]
 )
 
-# Second check (AND condition)
+# Second check: urgency high? (only reached when sentiment IS negative)
 check_urgency = ConditionalNode(
     id="check_urgency",
-    conditions=[
-        {
-            "if": {"field": "{{analyzer.urgency}}", "operator": "equals", "value": "high"},
-            "then": "escalate"  # Both negative AND high urgency
-        }
-    ],
-    default="standard_negative_response",
-    dependencies=["analyzer"]
+    name="High Urgency?",
+    left_value="{{analyze_urgency}}",
+    operator="equals",
+    right_value="high",
+    true_branch=["escalate"],         # negative AND high urgency
+    false_branch=["soft_response"],
+    dependencies=["check_sentiment"]
 )
 ```
 
-### OR Logic
+### OR Logic — multiple conditions pointing to the same branch
 
-Multiple conditions pointing to the same target:
+```python
+# Escalate if sentiment is negative
+check_neg = ConditionalNode(
+    id="check_neg",
+    name="Negative?",
+    left_value="{{analyze.sentiment}}",
+    operator="equals",
+    right_value="negative",
+    true_branch=["escalate"],
+    false_branch=["check_critical"],
+    dependencies=["analyze"]
+)
+
+# OR escalate if category is complaint
+check_critical = ConditionalNode(
+    id="check_critical",
+    name="Complaint?",
+    left_value="{{analyze.category}}",
+    operator="equals",
+    right_value="complaint",
+    true_branch=["escalate"],    # same escalate node
+    false_branch=["normal_flow"],
+    dependencies=["check_neg"]
+)
+```
+
+## Per-Node Condition (Conditional Execution)
+
+Every node type supports `.with_condition()` to skip execution unless a condition is met:
+
+```python
+# Only send email if the user opted in
+send_email = ToolNode(
+    id="send_email",
+    name="Send Email",
+    tool="gmail_send",
+    params={...}
+).with_condition(
+    left_value="{{input.email_opt_in}}",
+    operator="equals",
+    right_value="true"
+)
+
+# Only run expensive analysis on large payloads
+deep_analysis = LLMNode(
+    id="deep_analysis",
+    name="Deep Analysis",
+    instruction="..."
+).with_condition(
+    left_value="{{input.data_size}}",
+    operator="greater_than",
+    right_value="1000"
+)
+```
+
+## Retry Configuration
+
+Use `.with_retry()` to enable retries on the conditional node itself:
 
 ```python
 router = ConditionalNode(
-    id="escalation_router",
-    conditions=[
-        # Escalate if sentiment is negative OR urgency is critical
-        {
-            "if": {"field": "{{analyzer.sentiment}}", "operator": "equals", "value": "negative"},
-            "then": "escalate"
-        },
-        {
-            "if": {"field": "{{analyzer.urgency}}", "operator": "equals", "value": "critical"},
-            "then": "escalate"
-        },
-        {
-            "if": {"field": "{{analyzer.category}}", "operator": "equals", "value": "complaint"},
-            "then": "escalate"
-        }
-    ],
-    default="normal_flow",
-    dependencies=["analyzer"]
-)
-```
-
-## Nested Routing
-
-Create complex decision trees:
-
-```python
-# Level 1: Route by category
-category_router = ConditionalNode(
-    id="category_router",
-    conditions=[
-        {
-            "if": {"field": "{{classifier.category}}", "operator": "equals", "value": "technical"},
-            "then": "technical_router"
-        },
-        {
-            "if": {"field": "{{classifier.category}}", "operator": "equals", "value": "billing"},
-            "then": "billing_router"
-        }
-    ],
-    default="general_support",
-    dependencies=["classifier"]
-)
-
-# Level 2: Route technical issues by severity
-technical_router = ConditionalNode(
-    id="technical_router",
-    conditions=[
-        {
-            "if": {"field": "{{classifier.severity}}", "operator": "equals", "value": "critical"},
-            "then": "critical_tech_support"
-        },
-        {
-            "if": {"field": "{{classifier.severity}}", "operator": "equals", "value": "high"},
-            "then": "high_tech_support"
-        }
-    ],
-    default="standard_tech_support",
-    dependencies=["classifier"]
-)
-```
-
-## Common Patterns
-
-### A/B Testing
-
-```python
-import random
-
-router = ConditionalNode(
-    id="ab_test",
-    conditions=[
-        {
-            "if": {"field": "{{input.user_id}}", "operator": "matches", "value": "^[0-4]"},
-            "then": "variant_a"  # 50% of users (IDs starting with 0-4)
-        }
-    ],
-    default="variant_b"  # Other 50%
-)
-```
-
-### Error Handling
-
-```python
-router = ConditionalNode(
-    id="error_router",
-    conditions=[
-        {
-            "if": {"field": "{{api_call.status}}", "operator": "equals", "value": "success"},
-            "then": "process_result"
-        },
-        {
-            "if": {"field": "{{api_call.error}}", "operator": "contains", "value": "rate_limit"},
-            "then": "retry_with_backoff"
-        },
-        {
-            "if": {"field": "{{api_call.error}}", "operator": "contains", "value": "auth"},
-            "then": "refresh_auth"
-        }
-    ],
-    default="log_error",
-    dependencies=["api_call"]
-)
-```
-
-### Feature Flags
-
-```python
-router = ConditionalNode(
-    id="feature_flag",
-    conditions=[
-        {
-            "if": {"field": "{{input.features}}", "operator": "contains", "value": "new_ui"},
-            "then": "new_ui_handler"
-        },
-        {
-            "if": {"field": "{{input.user_tier}}", "operator": "equals", "value": "beta"},
-            "then": "beta_handler"
-        }
-    ],
-    default="standard_handler"
-)
+    id="router",
+    name="Route Request",
+    left_value="{{classify}}",
+    operator="equals",
+    right_value="urgent",
+    true_branch=["urgent_handler"],
+    false_branch=["standard_handler"],
+    dependencies=["classify"]
+).with_retry(max_retries=3, delay=1.0)
 ```
 
 ## YAML Configuration
@@ -334,21 +269,17 @@ router = ConditionalNode(
 ```yaml
 nodes:
   - id: router
-    type: conditional
-    conditions:
-      - if:
-          field: "{{analyzer.sentiment}}"
-          operator: equals
-          value: "positive"
-        then: positive_handler
-      - if:
-          field: "{{analyzer.sentiment}}"
-          operator: equals
-          value: "negative"
-        then: negative_handler
-    default: neutral_handler
+    name: Route by Sentiment
+    type: condition
+    left_value: "{{analyze}}"
+    operator: contains
+    right_value: "negative"
+    true_branch:
+      - escalate
+    false_branch:
+      - log_ok
     dependencies:
-      - analyzer
+      - analyze
 ```
 
 ## Complete Example
@@ -356,96 +287,76 @@ nodes:
 ```python
 from fibonacci import Workflow, LLMNode, ToolNode, ConditionalNode
 
-workflow = Workflow(name="support-router")
+wf = Workflow(name="support-ticket-router")
 
-# Classify incoming message
-classifier = LLMNode(
-    id="classifier",
-    model="claude-sonnet-4-5-20250929",
-    prompt="""Classify this support message:
-{{input.message}}
+# Classify ticket
+classify = LLMNode(
+    id="classify",
+    name="Classify Ticket",
+    instruction="""Classify this support ticket.
+Respond with exactly one word: urgent, billing, technical, or general.
 
-Return JSON:
-{
-    "category": "technical|billing|general|complaint",
-    "urgency": "low|medium|high|critical",
-    "sentiment": "positive|negative|neutral"
-}""",
-    output_format="json"
+Ticket: {{input.message}}"""
 )
 
-# Main router
-main_router = ConditionalNode(
-    id="main_router",
-    conditions=[
-        {
-            "if": {"field": "{{classifier.urgency}}", "operator": "equals", "value": "critical"},
-            "then": "emergency_escalation"
-        },
-        {
-            "if": {"field": "{{classifier.category}}", "operator": "equals", "value": "complaint"},
-            "then": "complaint_handler"
-        },
-        {
-            "if": {"field": "{{classifier.category}}", "operator": "equals", "value": "technical"},
-            "then": "tech_support"
-        },
-        {
-            "if": {"field": "{{classifier.category}}", "operator": "equals", "value": "billing"},
-            "then": "billing_support"
-        }
-    ],
-    default="general_support",
-    dependencies=["classifier"]
+# Route urgent tickets immediately
+check_urgent = ConditionalNode(
+    id="check_urgent",
+    name="Urgent?",
+    left_value="{{classify}}",
+    operator="equals",
+    right_value="urgent",
+    true_branch=["page_on_call"],
+    false_branch=["check_billing"],
+    dependencies=["classify"]
 )
 
-# Emergency escalation
-emergency = ToolNode(
-    id="emergency_escalation",
-    tool="slack.post_message",
-    inputs={
-        "channel": "#urgent-support",
-        "message": "🚨 CRITICAL: {{input.message}}"
-    }
+# Route billing tickets
+check_billing = ConditionalNode(
+    id="check_billing",
+    name="Billing Issue?",
+    left_value="{{classify}}",
+    operator="equals",
+    right_value="billing",
+    true_branch=["billing_team"],
+    false_branch=["tech_team"],
+    dependencies=["check_urgent"]
 )
 
-# Complaint handler
-complaint = LLMNode(
-    id="complaint_handler",
-    model="claude-sonnet-4-5-20250929",
-    prompt="""Handle this complaint with empathy:
-{{input.message}}
-
-Acknowledge the issue, apologize, and offer resolution."""
+# Urgent: page on-call engineer
+page_on_call = ToolNode(
+    id="page_on_call",
+    name="Page On-Call",
+    tool="slack_send_message",
+    params={
+        "channel": "#on-call",
+        "message": "🚨 Urgent ticket: {{input.message}}"
+    },
+    dependencies=["check_urgent"]
 )
 
-# Tech support
-tech = LLMNode(
-    id="tech_support",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Provide technical assistance for: {{input.message}}"
+# Billing team
+billing_team = ToolNode(
+    id="billing_team",
+    name="Notify Billing",
+    tool="slack_send_message",
+    params={
+        "channel": "#billing",
+        "message": "Billing ticket: {{input.message}}"
+    },
+    dependencies=["check_billing"]
 )
 
-# Billing support
-billing = LLMNode(
-    id="billing_support",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Address this billing inquiry: {{input.message}}"
+# Tech support (default)
+tech_team = LLMNode(
+    id="tech_team",
+    name="Tech Response",
+    instruction="Provide a helpful technical response to: {{input.message}}",
+    dependencies=["check_billing"]
 )
 
-# General support
-general = LLMNode(
-    id="general_support",
-    model="claude-sonnet-4-5-20250929",
-    prompt="Provide helpful response to: {{input.message}}"
-)
+wf.add_nodes([classify, check_urgent, check_billing, page_on_call, billing_team, tech_team])
 
-# Add all nodes
-for node in [classifier, main_router, emergency, complaint, tech, billing, general]:
-    workflow.add_node(node)
-
-# Execute
-result = workflow.execute(inputs={
-    "message": "My payment failed and I can't access my account!"
-})
+result = wf.run(input_data={"message": "My payment failed!"})
+print(result.output_data)
 ```
