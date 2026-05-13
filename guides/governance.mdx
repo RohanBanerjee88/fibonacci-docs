@@ -1,0 +1,378 @@
+---
+title: 'Governance'
+description: 'Manage organization governance settings, quotas, tool policies, and workflow registry lifecycle'
+---
+
+Fibonacci's governance layer gives organization owners and admins control over approval workflows, resource quotas, tool access policies, and the workflow registry. All governance mutations require at minimum the **owner** role.
+
+## Organization Governance Settings
+
+Governance settings control which workflow actions require human approval before execution.
+
+### Get Current Settings
+
+```bash
+GET /organizations/{id}/governance
+```
+
+```json
+{
+  "require_approval_for_external_comm": false,
+  "require_approval_for_public_writes": true,
+  "require_approval_for_permission_changes": true,
+  "allow_self_approval": false,
+  "approval_threshold": 1,
+  "category_flags": {
+    "financial": true,
+    "pii": true
+  }
+}
+```
+
+### Update Settings
+
+```bash
+PATCH /organizations/{id}/governance
+```
+
+```json
+{
+  "require_approval_for_external_comm": true,
+  "allow_self_approval": false,
+  "approval_threshold": 2
+}
+```
+
+**Field reference:**
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `require_approval_for_external_comm` | boolean | Gate workflows that send email, webhooks, or external HTTP calls |
+| `require_approval_for_public_writes` | boolean | Gate workflows that write to public-facing storage or APIs |
+| `require_approval_for_permission_changes` | boolean | Gate any action that modifies user/role permissions |
+| `allow_self_approval` | boolean | Whether a workflow's creator can approve their own execution request |
+| `approval_threshold` | integer | Minimum number of approvals required |
+| `category_flags` | object | Per-category override flags (e.g. `"financial": true`) |
+
+The risk service enforces these flags at execution time — matching workflows are queued for approval rather than running immediately.
+
+## Quota Management
+
+Quotas cap resource usage per organization. Plan defaults apply automatically; owners can override them up to platform-defined ceilings.
+
+### Get Quota Limits
+
+```bash
+GET /organizations/{id}/quota
+```
+
+```json
+{
+  "plan": "pro",
+  "limits": {
+    "workflow_runs_per_hour": 300,
+    "concurrent_executions": 10,
+    "memory_mb": 4096
+  },
+  "overrides": {
+    "workflow_runs_per_hour": 500
+  },
+  "effective": {
+    "workflow_runs_per_hour": 500,
+    "concurrent_executions": 10,
+    "memory_mb": 4096
+  }
+}
+```
+
+### Set Quota Overrides
+
+Requires **owner** role. Overrides are validated against plan ceilings.
+
+```bash
+PATCH /organizations/{id}/quota
+```
+
+```json
+{
+  "workflow_runs_per_hour": 500
+}
+```
+
+<Warning>
+Override values must be positive and cannot exceed 100× the plan default for any key. Invalid values are rejected with a `422` response. See [Security](/guides/security#quota-override-validation) for details.
+</Warning>
+
+## Tool Policy Administration
+
+Tool policies control which tools organization members can use, and optionally restrict usage by role.
+
+### Organization-Level Tool Policies
+
+```bash
+# List all tool policies
+GET /organizations/{id}/tool-policies
+
+# Create a policy
+POST /organizations/{id}/tool-policies
+```
+
+```json
+{
+  "tool_name": "http.request",
+  "allowed": true,
+  "restrictions": {
+    "allowed_domains": ["api.example.com"],
+    "max_response_size_kb": 1024
+  }
+}
+```
+
+<Note>
+The `tool_name` must exist in the tool registry. Unknown names return `422` with a hint to check `GET /tools`.
+</Note>
+
+### Role-Level Policy Overrides
+
+Fine-tune access per role within the organization:
+
+```bash
+# List role overrides
+GET /organizations/{id}/role-policy-overrides
+
+# Create an override
+POST /organizations/{id}/role-policy-overrides
+```
+
+```json
+{
+  "role": "developer",
+  "tool_name": "shell.exec",
+  "allowed": false
+}
+```
+
+Role overrides take precedence over org-level policies. Evaluation order: role override → org policy → platform default (deny).
+
+## Workflow Version Management
+
+Every deployment of a workflow creates a version snapshot. Admins and owners can inspect and roll back versions.
+
+### List Versions
+
+Accessible to any active org member (member or viewer).
+
+```bash
+GET /workflows/{id}/versions
+```
+
+```json
+{
+  "versions": [
+    {
+      "version": 3,
+      "deployed_at": "2026-05-12T23:00:00Z",
+      "deployed_by": "user-123",
+      "message": "Add retry logic to API node"
+    },
+    {
+      "version": 2,
+      "deployed_at": "2026-05-10T14:00:00Z",
+      "deployed_by": "user-456",
+      "message": "Initial production deploy"
+    }
+  ]
+}
+```
+
+### Inspect a Version
+
+```bash
+GET /workflows/{id}/versions/{version}
+```
+
+Returns the full workflow definition snapshot for that version.
+
+### Roll Back
+
+Rollback creates a **new version snapshot** from the target version's definition rather than overwriting history.
+
+```bash
+POST /workflows/{id}/versions/{version}/rollback
+```
+
+```json
+{
+  "message": "Rolling back to v2 — v3 caused timeout errors"
+}
+```
+
+Response:
+
+```json
+{
+  "new_version": 4,
+  "rolled_back_from": 2,
+  "deployed_at": "2026-05-13T10:00:00Z"
+}
+```
+
+## Workflow Registry
+
+The workflow registry is an organization-level catalogue of approved workflow templates. Templates can be approved, deprecated, and archived through a structured lifecycle.
+
+### Lifecycle States
+
+```
+active ──► deprecated ──► archived
+  ▲
+  │ approve-template
+  │
+(draft workflow)
+```
+
+| State | Visible in registry | Usable as template |
+|-------|--------------------|-----------------|
+| active | Yes | Yes |
+| deprecated | Yes | Yes (with warning) |
+| archived | No (unless `?include_archived=true`) | No |
+
+### Approve as Template
+
+Requires **owner** role. Only workflows that belong to an organization can be approved (personal workflows are rejected with `400`).
+
+```bash
+POST /workflow-registry/{id}/approve-template
+```
+
+```json
+{
+  "template_name": "customer-support-v2",
+  "description": "Handles tier-1 support queries with escalation",
+  "tags": ["support", "production-ready"]
+}
+```
+
+### Deprecate a Template
+
+```bash
+POST /workflow-registry/{id}/deprecate
+```
+
+```json
+{
+  "reason": "Superseded by customer-support-v3",
+  "replacement_id": "wf-xyz789"
+}
+```
+
+### Archive a Template
+
+Archived templates are hidden from the default registry listing and cannot be used as templates. This action is not reversible via the API.
+
+```bash
+POST /workflow-registry/{id}/archive
+```
+
+### List Registry Entries
+
+```bash
+# Active and deprecated only (default)
+GET /workflow-registry
+
+# Include archived
+GET /workflow-registry?include_archived=true
+```
+
+## Governance Reporting
+
+### Summary Dashboard
+
+High-level governance health for the organization:
+
+```bash
+GET /organizations/{id}/governance/report
+```
+
+```json
+{
+  "period": "last_30_days",
+  "total_executions": 4820,
+  "gated_executions": 312,
+  "approved": 298,
+  "rejected": 14,
+  "approval_rate": 0.955,
+  "avg_approval_time_minutes": 8.3,
+  "top_approvers": [
+    {"user_id": "user-123", "approvals": 145}
+  ]
+}
+```
+
+### Paginated Audit Log
+
+Full governance event history with pagination:
+
+```bash
+GET /organizations/{id}/governance/audit?page=1&per_page=50
+```
+
+Optional filters:
+
+| Parameter | Description |
+|-----------|-------------|
+| `event_type` | Filter by event type (e.g. `approval.granted`, `quota.exceeded`) |
+| `user_id` | Filter by acting user |
+| `since` | ISO 8601 start date |
+| `until` | ISO 8601 end date |
+
+### Approval Statistics
+
+Breakdown of approval activity by workflow, user, and category:
+
+```bash
+GET /organizations/{id}/governance/approvals
+```
+
+```json
+{
+  "by_workflow": [
+    {
+      "workflow_id": "wf-abc123",
+      "name": "data-exporter",
+      "total": 58,
+      "approved": 55,
+      "rejected": 3
+    }
+  ],
+  "by_category": {
+    "external_comm": {"total": 120, "approved": 115},
+    "public_writes": {"total": 80, "approved": 78}
+  }
+}
+```
+
+## Access Requirements Summary
+
+| Operation | Minimum Role |
+|-----------|--------------|
+| Read governance settings | admin or owner |
+| Update governance settings | owner |
+| Read quota limits | admin or owner |
+| Set quota overrides | owner |
+| Read/write tool policies | owner |
+| List workflow versions | member or viewer |
+| Inspect/rollback workflow versions | admin or owner |
+| Approve/deprecate/archive registry entries | owner |
+| View governance reports | admin or owner |
+
+## Next Steps
+
+<CardGroup cols={2}>
+  <Card title="Security" icon="shield-halved" href="/guides/security">
+    Production hardening, secrets backends, and audit logging
+  </Card>
+  <Card title="Best Practices" icon="star" href="/guides/best-practices">
+    Production workflow patterns
+  </Card>
+</CardGroup>

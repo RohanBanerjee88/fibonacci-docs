@@ -43,7 +43,6 @@ import os
 
 config = SecureConfig(
     api_key=os.environ.get("FIBONACCI_API_KEY"),
-    # Validate key is present
     require_api_key=True
 )
 ```
@@ -93,12 +92,17 @@ fibonacci secret list
 from fibonacci import Workflow
 from fibonacci.security import SecretsManager
 
-# Configure secrets manager
+# Default: database backend
+secrets = SecretsManager(backend="db")
+
+# AWS Secrets Manager backend
+# Requires: pip install boto3
+# Env vars: SECRETS_BACKEND, AWS_REGION, AWS_SECRETS_PREFIX
 secrets = SecretsManager(
-    backend="vault",  # or "aws_secrets", "gcp_secrets", "azure_keyvault"
+    backend="aws_secrets_manager",
     config={
-        "vault_addr": "https://vault.example.com",
-        "auth_method": "kubernetes"
+        "region": "us-east-1",
+        "prefix": "fibonacci/prod"  # optional
     }
 )
 
@@ -129,6 +133,82 @@ secrets = SecretsManager(
 status = secrets.rotation_status("API_KEY")
 print(f"Days until rotation: {status.days_remaining}")
 ```
+
+## Production Environment Hardening
+
+### Required Settings
+
+The server validates these settings at startup. Misconfigurations are **fatal errors** in `APP_ENV=production` and warnings in staging.
+
+| Variable | Production Requirement | Description |
+|----------|------------------------|-------------|
+| `SESSION_SECRET_KEY` | Required (≥ 32 chars) | Signing key for sessions |
+| `TRUSTED_PROXY_HOSTS` | Recommended | Comma-separated trusted proxy IPs |
+| `ENABLE_DOCS` | Must be `false` | Disables the interactive API docs UI |
+| `ENABLE_DEVELOPER_ROUTES` | Must be `false` | Disables developer-only routes |
+
+```bash
+# Production .env
+APP_ENV=production
+SESSION_SECRET_KEY=your-random-secret-key-at-least-32-characters
+TRUSTED_PROXY_HOSTS=10.0.0.1,10.0.0.2
+ENABLE_DOCS=false
+ENABLE_DEVELOPER_ROUTES=false
+```
+
+<Warning>
+Setting `ENABLE_DOCS=true` or `ENABLE_DEVELOPER_ROUTES=true` with `APP_ENV=production` **prevents the server from starting**. In staging these are warnings only.
+</Warning>
+
+### Secrets Backend Configuration
+
+Configure where Fibonacci stores organization secrets:
+
+```bash
+# Default: database
+SECRETS_BACKEND=db
+
+# AWS Secrets Manager
+SECRETS_BACKEND=aws_secrets_manager
+AWS_REGION=us-east-1
+AWS_SECRETS_PREFIX=fibonacci/prod  # optional namespace prefix
+```
+
+When `SECRETS_BACKEND=aws_secrets_manager` is set, `boto3` must be installed — startup fails with a clear error if it is missing:
+
+```bash
+pip install boto3
+```
+
+### Secrets Health Endpoint
+
+Verify secrets backend connectivity without exposing secret values:
+
+```bash
+GET /health/secrets
+```
+
+```json
+{
+  "status": "healthy",
+  "backend": "aws_secrets_manager",
+  "checks": {
+    "list_secrets": "ok",
+    "get_secret": "ok"
+  }
+}
+```
+
+This endpoint confirms IAM connectivity only and never returns secret values. It requires `ListSecrets` and `GetSecretValue` IAM actions on the configured prefix.
+
+### Quota Override Validation
+
+Quota overrides set by organization admins are validated to prevent abuse:
+
+- Negative or non-numeric values are silently discarded and replaced with the plan default.
+- Values exceeding 100× the plan default ceiling are rejected.
+
+This prevents both DoS via zero/negative limits and rate-limit bypass via excessively large overrides. See [Governance](/guides/governance) for how to set valid quota overrides.
 
 ## Encryption
 
@@ -165,7 +245,6 @@ from fibonacci import FibonacciClient
 
 client = FibonacciClient(
     api_key="...",
-    # TLS is always enabled, these are additional options
     tls_config={
         "verify_certificates": True,
         "min_version": "1.3",
@@ -283,6 +362,10 @@ fibonacci auth create-key --name "production" \
   --workflows "production/*"
 ```
 
+<Note>
+API key scopes are returned by the API as a `Dict[str, bool]` map (e.g. `{"runs:read": true, "runs:write": false}`). The SDK's `APIKeyInfo.scopes` field accepts both this dict form and the legacy list form.
+</Note>
+
 ## Audit Logging
 
 ### Enable Audit Logs
@@ -328,6 +411,8 @@ Audit logs capture:
 }
 ```
 
+Additional audit events include `DEVELOPER_SHELL_EXECUTED` (emitted when a superuser accesses the developer shell), quota enforcement events, and governance setting changes.
+
 ### Query Audit Logs
 
 ```bash
@@ -343,6 +428,8 @@ fibonacci audit logs --user user-123
 # Export for analysis
 fibonacci audit export --format json --output audit.json
 ```
+
+For paginated API access to audit logs see the [Governance guide](/guides/governance).
 
 ## Input Validation and Sanitization
 
@@ -390,14 +477,13 @@ sanitized = sanitize_input(
 
 node = LLMNode(
     id="analyzer",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-4-6",
     prompt=f"""Analyze this text:
 <user_input>
 {sanitized}
 </user_input>
 
 Provide sentiment analysis.""",
-    # Additional safeguards
     prompt_injection_detection=True
 )
 ```
@@ -412,9 +498,9 @@ workflow = Workflow(
     name="filtered-workflow",
     output_filter=OutputFilter(
         rules=[
-            {"type": "pii", "action": "redact"},  # Redact PII
-            {"type": "secrets", "action": "block"},  # Block secret patterns
-            {"type": "code", "action": "sandbox"}  # Sandbox code output
+            {"type": "pii", "action": "redact"},
+            {"type": "secrets", "action": "block"},
+            {"type": "code", "action": "sandbox"}
         ]
     )
 )
@@ -460,6 +546,15 @@ client = FibonacciClient(
     - [ ] No hardcoded credentials in code or YAML
     - [ ] API key rotation policy in place
     - [ ] Scoped API keys for different environments
+  </Accordion>
+
+  <Accordion title="Production Hardening">
+    - [ ] `SESSION_SECRET_KEY` set (≥ 32 characters)
+    - [ ] `ENABLE_DOCS=false` in production
+    - [ ] `ENABLE_DEVELOPER_ROUTES=false` in production
+    - [ ] `TRUSTED_PROXY_HOSTS` configured
+    - [ ] Secrets backend chosen and verified via `GET /health/secrets`
+    - [ ] `boto3` installed if using `aws_secrets_manager` backend
   </Accordion>
 
   <Accordion title="Data Protection">
@@ -530,10 +625,10 @@ compliance:
 ## Next Steps
 
 <CardGroup cols={2}>
+  <Card title="Governance" icon="building-columns" href="/guides/governance">
+    Organization governance, quotas, and policy administration
+  </Card>
   <Card title="Best Practices" icon="star" href="/guides/best-practices">
     Production workflow patterns
-  </Card>
-  <Card title="Error Handling" icon="triangle-exclamation" href="/guides/error-handling">
-    Handle failures gracefully
   </Card>
 </CardGroup>
