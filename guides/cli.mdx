@@ -24,7 +24,8 @@ fibonacci --version
 | Command | Description |
 |---------|-------------|
 | `fibonacci init` | Initialize a new project |
-| `fibonacci run` | Execute a workflow |
+| `fibonacci run` | Execute a workflow locally |
+| `fibonacci list` | List deployed workflows |
 | `fibonacci validate` | Validate workflow files |
 | `fibonacci deploy` | Deploy to Fibonacci Cloud |
 | `fibonacci logs` | View execution logs |
@@ -61,7 +62,7 @@ my-project/
 
 ### `fibonacci run`
 
-Execute workflows locally or remotely:
+Execute workflows locally:
 
 ```bash
 # Run a Python workflow
@@ -76,9 +77,6 @@ fibonacci run workflow.py --input '{"text": "Hello world"}'
 # From input file
 fibonacci run workflow.py --input-file data.json
 
-# Run remotely on Fibonacci Cloud
-fibonacci run workflow.py --remote
-
 # With specific environment
 fibonacci run workflow.py --env production
 ```
@@ -89,11 +87,38 @@ fibonacci run workflow.py --env production
 |--------|-------------|
 | `--input, -i` | JSON input data |
 | `--input-file, -f` | Path to JSON input file |
-| `--remote, -r` | Execute on Fibonacci Cloud |
 | `--env, -e` | Environment (dev/staging/production) |
 | `--timeout, -t` | Execution timeout in seconds |
 | `--verbose, -v` | Verbose output |
 | `--dry-run` | Validate without executing |
+
+<Note>
+To trigger an already-deployed workflow via the platform (with queue, risk assessment, and approval gates applied), use the API: `POST /api/v1/workflows/{id}/execute`. The `fibonacci run` command runs workflows locally without these controls.
+</Note>
+
+### `fibonacci list`
+
+List workflows deployed to Fibonacci Cloud:
+
+```bash
+# List all workflows
+fibonacci list
+
+# Show only active workflows
+fibonacci list --active
+
+# Output as JSON
+fibonacci list --format json
+```
+
+**Example output:**
+
+```
+ID                    NAME                    ACTIVE
+wf-abc123             customer-support         yes
+wf-def456             data-pipeline            yes
+wf-ghi789             legacy-analyzer          no
+```
 
 ### `fibonacci validate`
 
@@ -249,7 +274,7 @@ Manage configuration:
 fibonacci config list
 
 # Set a config value
-fibonacci config set default_model claude-sonnet-4-5-20250929
+fibonacci config set default_model claude-sonnet-4-6
 
 # Get a config value
 fibonacci config get default_model
@@ -265,7 +290,7 @@ fibonacci config edit
 
 | Key | Description | Default |
 |-----|-------------|---------|
-| `default_model` | Default LLM model | `claude-sonnet-4-5-20250929` |
+| `default_model` | Default LLM model | `claude-sonnet-4-6` |
 | `default_env` | Default environment | `development` |
 | `log_level` | CLI log verbosity | `info` |
 | `output_format` | Default output format | `text` |
@@ -302,7 +327,7 @@ version: "1.0.0"
 
 # Default settings
 defaults:
-  model: claude-sonnet-4-5-20250929
+  model: claude-sonnet-4-6
   timeout: 60
   retry:
     max_attempts: 3
@@ -340,7 +365,7 @@ tools:
 The CLI respects these environment variables:
 
 | Variable | Description |
-|----------|-------------|
+|----------|-----------|
 | `FIBONACCI_API_KEY` | API key for Fibonacci Cloud |
 | `FIBONACCI_ENV` | Default environment |
 | `FIBONACCI_CONFIG` | Path to config file |
@@ -453,10 +478,10 @@ deploy:
     ```
   </Accordion>
 
-  <Accordion title="Slow execution">
-    Check network connectivity and consider running locally:
+  <Accordion title="fibonacci list shows no output">
+    This was a known bug in SDK versions before v0.2.4 where workflow objects were accessed as dicts. Upgrade to the latest version:
     ```bash
-    fibonacci run workflow.py  # Local execution
+    pip install --upgrade fibonacci-sdk
     ```
   </Accordion>
 </AccordionGroup>

@@ -30,18 +30,67 @@ Get your API key from the [Fibonacci Dashboard](https://app.fibonacci.dev/settin
 |--------|----------|-------------|
 | `GET` | `/workflows` | List all workflows |
 | `POST` | `/workflows` | Create a workflow |
-| `GET` | `/workflows/{name}` | Get workflow details |
-| `PUT` | `/workflows/{name}` | Update a workflow |
-| `DELETE` | `/workflows/{name}` | Delete a workflow |
+| `GET` | `/workflows/{id}` | Get workflow details |
+| `PUT` | `/workflows/{id}` | Update a workflow |
+| `DELETE` | `/workflows/{id}` | Delete a workflow |
 
 ### Execution
 
 | Method | Endpoint | Description |
 |--------|----------|-------------|
-| `POST` | `/workflows/{name}/execute` | Execute a workflow |
+| `POST` | `/workflows/{id}/execute` | Execute a workflow |
 | `GET` | `/executions/{id}` | Get execution status |
 | `GET` | `/executions` | List executions |
 | `POST` | `/executions/{id}/cancel` | Cancel execution |
+
+### Workflow Versions
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/workflows/{id}/versions` | List all versions |
+| `GET` | `/workflows/{id}/versions/{version}` | Inspect a specific version |
+| `POST` | `/workflows/{id}/versions/{version}/rollback` | Roll back (creates a new snapshot) |
+
+### Workflow Registry
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `POST` | `/workflow-registry/{id}/approve-template` | Approve a workflow as an org template |
+| `POST` | `/workflow-registry/{id}/deprecate` | Mark a template as deprecated |
+| `POST` | `/workflow-registry/{id}/archive` | Archive a template |
+| `GET` | `/workflow-registry` | List registry entries (hides archived by default) |
+
+<Note>
+Pass `?include_archived=true` to `/workflow-registry` to include archived entries in the response.
+</Note>
+
+### Organizations — Governance
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/organizations/{id}/governance` | Get governance settings |
+| `PATCH` | `/organizations/{id}/governance` | Update governance settings |
+| `GET` | `/organizations/{id}/governance/report` | Governance summary dashboard |
+| `GET` | `/organizations/{id}/governance/audit` | Paginated governance audit log |
+| `GET` | `/organizations/{id}/governance/approvals` | Approval statistics |
+
+### Organizations — Quotas
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/organizations/{id}/quota` | Get quota limits (plan + overrides) |
+| `PATCH` | `/organizations/{id}/quota` | Set quota overrides (owner role required) |
+
+### Organizations — Tool Policies
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/organizations/{id}/tool-policies` | List org-level tool policies |
+| `POST` | `/organizations/{id}/tool-policies` | Create a tool policy |
+| `PATCH` | `/organizations/{id}/tool-policies/{tool}` | Update a tool policy |
+| `DELETE` | `/organizations/{id}/tool-policies/{tool}` | Delete a tool policy |
+| `GET` | `/organizations/{id}/role-policy-overrides` | List role-level overrides |
+| `POST` | `/organizations/{id}/role-policy-overrides` | Create a role override |
 
 ### Memory
 
@@ -58,6 +107,13 @@ Get your API key from the [Fibonacci Dashboard](https://app.fibonacci.dev/settin
 | `GET` | `/tools` | List available tools |
 | `GET` | `/tools/{name}` | Get tool details |
 | `POST` | `/tools/{name}/connect` | Connect a tool |
+
+### Health
+
+| Method | Endpoint | Description |
+|--------|----------|-------------|
+| `GET` | `/health` | Service health check |
+| `GET` | `/health/secrets` | Secrets backend connectivity check |
 
 ## Request Format
 
@@ -96,7 +152,7 @@ Error responses:
 ## Rate Limits
 
 | Plan | Requests/minute | Requests/day |
-|------|-----------------|--------------|
+|------|-----------------|-------------|
 | Free | 60 | 1,000 |
 | Pro | 300 | 50,000 |
 | Enterprise | Custom | Custom |
@@ -119,7 +175,7 @@ We recommend using our official SDKs:
 ## Example: Execute a Workflow
 
 ```bash
-curl -X POST https://api.fibonacci.dev/v1/workflows/my-workflow/execute \
+curl -X POST https://api.fibonacci.dev/v1/workflows/wf-abc123/execute \
   -H "Authorization: Bearer YOUR_API_KEY" \
   -H "Content-Type: application/json" \
   -d '{
@@ -139,7 +195,31 @@ Response:
     "outputs": {
       "analyzer": "The text sentiment is positive..."
     },
-    "duration_ms": 1523
+    "duration_ms": 1523,
+    "nodes_executed": 3,
+    "nodes_failed": 0
   }
 }
 ```
+
+## Example: Check Secrets Backend Health
+
+```bash
+curl https://api.fibonacci.dev/v1/health/secrets \
+  -H "Authorization: Bearer YOUR_API_KEY"
+```
+
+Response:
+
+```json
+{
+  "status": "healthy",
+  "backend": "aws_secrets_manager",
+  "checks": {
+    "list_secrets": "ok",
+    "get_secret": "ok"
+  }
+}
+```
+
+See the [Security guide](/guides/security) for IAM requirements and the [Governance guide](/guides/governance) for org-level policy endpoints.

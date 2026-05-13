@@ -66,6 +66,7 @@
               "guides/cli",
               "guides/error-handling",
               "guides/security",
+              "guides/governance",
               "guides/best-practices"
             ]
           }
