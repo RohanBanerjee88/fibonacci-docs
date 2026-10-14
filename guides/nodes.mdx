@@ -52,37 +52,49 @@ analyze = LLMNode(
     
     Text: {{input.text}}
     """,
-    model="claude-sonnet-4-5-20250929",  # Model to use
+    model="claude-haiku-4-5",    # Model to use
     max_tokens=500,              # Max response tokens
-    temperature=0.7,             # Creativity (0-1)
+    temperature=0.7,             # Creativity (0-1); only for models that accept it
     dependencies=[]              # Nodes this depends on
 )
 ```
 
 ### Available Models
 
-| Model | Best For | Speed | Cost |
-|-------|----------|-------|------|
-| `claude-sonnet-4-5-20250929` | Most tasks | Fast | $ |
-| `claude-opus-4-5-20251101` | Complex reasoning | Slower | $$$ |
-| `claude-haiku-4-5` | Simple tasks | Fastest | ¢ |
+LLM steps use `claude-haiku-4-5` unless the node sets `config.model` (or the server sets `CLAUDE_MODEL`). Any model in the platform's price registry works, for example:
+
+| Model | Best for | Price per million tokens (in / out) |
+|-------|----------|------|
+| `claude-haiku-5-5` | Fast, cheap extraction and summaries | $0.10 / $0.50 |
+| `claude-haiku-4-5` | The default for LLM steps | $1 / $5 |
+| `claude-sonnet-5` | Writing and reasoning (also generates workflows) | $2 / $10 |
+| `claude-opus-5` | Hard reasoning | $5 / $25 |
+| `claude-fable-5-1` | The most capable | $10 / $50 |
+
+`temperature` is only sent to models that accept it; Haiku 5.5, Sonnet 5, Opus 5 and Fable don't take it.
 
 ### Template Variables
 
-Reference inputs and other node outputs:
+Reference inputs, other steps' outputs and the run's date:
 
 ```python
 LLMNode(
     id="summarize",
     instruction="""
-    Summarize this data:
-    
-    Input: {{input.raw_data}}
-    Previous analysis: {{analyze_sentiment}}
-    User preferences: {{input.preferences.format}}
+    Summarize this for {{input.audience}}, as of {{today}}:
+
+    The issue: {{read_issue.text}}
+    Earlier analysis: {{analyze_sentiment}}
     """
 )
 ```
+
+| Template | Resolves to |
+|---|---|
+| `{{input.field}}` | A workflow input |
+| `{{node_id}}` | A step's whole output (cut to about 6,000 characters; set `config.max_reference_tokens` to change) |
+| `{{node_id.field}}` | One field of a step's output, in full |
+| `{{today}}`, `{{yesterday}}`, `{{now}}` | The run's start date and time (UTC), the same for the whole run |
 
 ---
 
@@ -101,7 +113,7 @@ node = ToolNode(
     tool="google_sheets_read",
     params={
         "spreadsheet_id": "{{input.sheet_id}}",
-        "range": "A1:D100"
+        "range_name": "A1:D100"
     }
 )
 ```
@@ -126,36 +138,32 @@ send_email = ToolNode(
 ### Popular Tools
 
 <AccordionGroup>
+  <Accordion title="Developer tools">
+    - `github_get_issue`, `github_list_issues`, `github_get_file`, `github_search_code`, `github_list_commits`, `github_list_pull_requests`, `github_get_checks`, `github_get_pr`
+    - `jira_get_issue`, `jira_search_issues`, `jira_create_issue`, `jira_update_issue`, `jira_add_comment`
+    - `trello_get_board`, `trello_search_cards`, `trello_create_card`, `trello_update_card`, `trello_add_comment`
+  </Accordion>
+
   <Accordion title="Google Workspace">
-    - `google_sheets_read` - Read spreadsheet data
-    - `google_sheets_write` - Write to spreadsheet
-    - `google_docs_read` - Read document content
-    - `google_docs_write` - Create/update documents
-    - `gmail_send` - Send emails
-    - `google_calendar_create` - Create events
+    - `google_docs_read`, `google_sheets_read`
+    - `gmail_send` (with attachments)
+    - `google_calendar_create_event` (with Meet links)
+    - `google_drive_permissions`
   </Accordion>
-  
-  <Accordion title="Communication">
-    - `slack_send_message` - Send Slack messages
-    - `slack_create_channel` - Create channels
-    - `discord_send` - Send Discord messages
-    - `twilio_sms` - Send SMS
+
+  <Accordion title="Messaging">
+    - `slack_send_message` (`@me` for a DM), `slack_create_channel`, `slack_upload_file`
+    - `discord_send_message`, `discord_create_channel`
   </Accordion>
-  
-  <Accordion title="Data & APIs">
-    - `http_request` - Generic HTTP calls
-    - `webhook_call` - Call webhooks
-    - `database_query` - Query databases
-    - `s3_upload` - Upload to S3
-  </Accordion>
-  
-  <Accordion title="Business Tools">
-    - `salesforce_create` - Create Salesforce records
-    - `hubspot_contact` - Manage HubSpot contacts
-    - `notion_page` - Create Notion pages
-    - `airtable_record` - Manage Airtable records
+
+  <Accordion title="Notion, Zoom and built-ins">
+    - `notion_read_page`, `notion_search`, `notion_create_page`
+    - `zoom_create_meeting`, `zoom_get_meeting`
+    - `web_search`, `text_analysis`, `text_processor`, `file_reader`
   </Accordion>
 </AccordionGroup>
+
+The [tool reference](/guides/tool-nodes) lists every parameter and output.
 
 ### Discover Tools
 
@@ -326,21 +334,23 @@ Handle transient failures:
 ```python
 # Enable retries with fluent API
 node = ToolNode(
-    id="api_call",
-    tool="http_request",
-    params={...}
+    id="checks",
+    tool="github_get_checks",
+    params={"repo": "acme/web"}
 ).with_retry(max_retries=3, delay=2.0)
 
 # Or in constructor
 node = ToolNode(
-    id="api_call",
-    tool="http_request",
-    params={...},
+    id="checks",
+    tool="github_get_checks",
+    params={"repo": "acme/web"},
     enable_retry=True,
     max_retries=3,
-    retry_delay=2.0  # Seconds, with exponential backoff
+    retry_delay=2.0  # Seconds, growing with each attempt
 )
 ```
+
+Failures that retrying can't fix (a bad credential, a missing permission, an unknown repository or board) are not retried: the step fails once with a message that says what to change.
 
 ## Conditional Execution
 

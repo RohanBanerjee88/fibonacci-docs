@@ -1,0 +1,154 @@
+---
+title: "External Agents"
+description: "Govern Claude Code, Cursor, Claude Desktop and any MCP client with the same rules, approvals and audit log as your workflows"
+---
+
+Fibonacci can decide tool calls for agents it doesn't run. A developer's Claude Code session, or any MCP client, asks Fibonacci before each tool call, and your organization's [governance rules](/guides/governance) answer: **allow**, **deny**, or **hold for approval**. Every decision lands in the same Approvals inbox, receipts and hash-chained audit log as workflow runs.
+
+**Tool outputs never leave the developer's machine.** Adapters send only the tool's name and arguments.
+
+| Adapter | For | How it plugs in |
+|---|---|---|
+| **Claude Code hook** | Claude Code | `PreToolUse` / `PostToolUse` / `SessionEnd` hooks. Covers Bash, file edits, web fetches and MCP tools. |
+| **MCP gateway** | Any MCP client: Claude Desktop, Cursor, Claude Code, Windsurf, SDK agents | One MCP server that starts and fronts your other MCP servers, so labels follow data *across* them. |
+
+Both are single Python files (3.8+, standard library only), served by the API.
+
+## Set up
+
+<Steps>
+  <Step title="Create a key">
+    In the web app, open **Agents → Connect an agent**. It creates an API key with only the `agents:authorize` scope, which can ask for decisions and nothing else, and generates the config to paste.
+  </Step>
+  <Step title="Download the adapter">
+    ```bash
+    mkdir -p ~/.fibonacci
+    # Claude Code hook
+    curl -fsSL https://api.fibonacci.today/api/v1/integrations/fibonacci_hook.py -o ~/.fibonacci/fibonacci_hook.py
+    # MCP gateway
+    curl -fsSL https://api.fibonacci.today/api/v1/integrations/fibonacci_mcp.py -o ~/.fibonacci/fibonacci_mcp.py
+    ```
+    `GET /api/v1/integrations` lists the files with their checksums.
+  </Step>
+  <Step title="Wire it in">
+    <Tabs>
+      <Tab title="Claude Code hook">
+        Merge into `~/.claude/settings.json` (per user) or `.claude/settings.json` (per repo):
+
+        ```json
+        {
+          "env": {
+            "FIBONACCI_API_URL": "https://api.fibonacci.today",
+            "FIBONACCI_API_KEY": "fib_…",
+            "FIBONACCI_FAIL_MODE": "closed",
+            "FIBONACCI_APPROVAL_WAIT": "55"
+          },
+          "hooks": {
+            "PreToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 ~/.fibonacci/fibonacci_hook.py pre", "timeout": 90}]}],
+            "PostToolUse": [{"matcher": "*", "hooks": [{"type": "command", "command": "python3 ~/.fibonacci/fibonacci_hook.py post", "timeout": 15}]}],
+            "SessionEnd": [{"hooks": [{"type": "command", "command": "python3 ~/.fibonacci/fibonacci_hook.py end", "timeout": 2}]}]
+          }
+        }
+        ```
+
+        For **org-wide enforcement**, ship the hooks in Claude Code's managed settings with `"allowManagedHooksOnly": true`, so developers can't remove them.
+      </Tab>
+      <Tab title="MCP gateway">
+        Move your MCP servers into `~/.fibonacci/mcp.json` (the same `mcpServers` shape as Claude Desktop and Cursor), then point your client at the gateway instead:
+
+        ```json
+        {
+          "mcpServers": {
+            "fibonacci": {
+              "command": "python3",
+              "args": ["/Users/you/.fibonacci/fibonacci_mcp.py"],
+              "env": {
+                "FIBONACCI_API_URL": "https://api.fibonacci.today",
+                "FIBONACCI_API_KEY": "fib_…"
+              }
+            }
+          }
+        }
+        ```
+
+        For Claude Code:
+
+        ```bash
+        claude mcp add --scope user --env FIBONACCI_API_URL=https://api.fibonacci.today \
+          --env FIBONACCI_API_KEY=fib_… --transport stdio fibonacci \
+          -- python3 ~/.fibonacci/fibonacci_mcp.py
+        ```
+      </Tab>
+    </Tabs>
+  </Step>
+</Steps>
+
+## What the agent sees
+
+| Fibonacci decides | Claude Code | An MCP client |
+|---|---|---|
+| **allow** | Nothing; its own permission prompts run as usual | The real server's result, unchanged |
+| **deny** | The call is blocked and the model is told which rule blocked it | A tool error naming the rule; the server is never called |
+| **require_approval** | Waits up to `FIBONACCI_APPROVAL_WAIT` seconds for an approver. Approved → the call runs. Otherwise it's blocked with the approval id, and retrying the *identical* call after approval passes. | Same, with progress notifications if the client sent a `progressToken` |
+| Fibonacci unreachable | Blocked (`FIBONACCI_FAIL_MODE=closed`, the default) or let through (`open`) | Same |
+
+A crashed hook blocks the call in closed mode (Claude Code would otherwise treat a crash as "allow").
+
+## How agent tools are classified
+
+Labels are **session-wide** for agents: once a session has read something `internal` and fetched something `untrusted`, later calls carry both. So *"Approve sends that mix web content with internal data"* holds a `curl -X POST` issued after the agent read the repo and fetched a web page.
+
+| Tools | Side effect | Labels on what they return |
+|---|---|---|
+| Read, Grep, Glob, LS, NotebookRead | read | `internal` |
+| WebFetch, WebSearch | read | `untrusted` |
+| Edit, MultiEdit, Write, NotebookEdit | write | |
+| Bash | **egress** if the command sends data out (`curl`/`wget` to a URL, `git push`, `gh pr create`, `scp`, `npm publish`, `aws s3 cp … s3://`…), otherwise write | |
+| MCP tools (`mcp__server__tool`) | by the verbs in the name: send/post/create/comment/share/upload → egress; web/browse/scrape/crawl (or a tool named exactly `fetch`) → read + `untrusted`; get/list/read/search → read + `internal`; anything else → write | |
+
+When unsure, a tool counts as **write**, never read. MCP annotations only make classification stricter (`openWorldHint: true` turns a write into egress). Override any tool per org in the governance settings' `external_tools`:
+
+```json
+{"mcp__crm__export_contacts": {"side_effect": "egress", "output_labels": ["pii"]}}
+```
+
+Org tool policies apply by tool name too, for example blocking `Bash` for the `member` role.
+
+## Sessions and the kill switch
+
+| Endpoint | Purpose |
+|---|---|
+| `POST /api/v1/authorize` | Ask about one tool call (what the adapters do) |
+| `POST /api/v1/authorize/observe` | Report what a finished call read (name and arguments only) |
+| `GET /api/v1/authorize/approvals/{id}` | Poll an approval the agent is waiting on |
+| `POST /api/v1/authorize/sessions/end` | Close the session; its pending approvals are cancelled |
+| `GET /api/v1/agent-sessions` | Live and past sessions in your orgs |
+| `POST /api/v1/agent-sessions/{id}/revoke` | **Kill switch**: every further call in that session is denied |
+
+The **Agents** page in the web app shows every live session and revokes one in a click.
+
+### Calling `/authorize` from your own agent
+
+```bash
+curl -X POST https://api.fibonacci.today/api/v1/authorize \
+  -H "Authorization: Bearer fib_…" -H "Content-Type: application/json" \
+  -d '{
+    "agent": {"name": "release-bot", "kind": "custom"},
+    "session_id": "deploy-2026-10-14",
+    "tool_name": "mcp__slack__post_message",
+    "tool_input": {"channel": "#releases", "text": "v2.4 is out"}
+  }'
+```
+
+```json
+{
+  "decision": "require_approval",
+  "reason": "Approve sends that mix web content with internal data",
+  "decision_id": "…",
+  "session_run_id": "…",
+  "labels": ["internal", "untrusted"],
+  "side_effect": "egress",
+  "approval_id": "…",
+  "rule_name": "Approve sends that mix web content with internal data"
+}
+```

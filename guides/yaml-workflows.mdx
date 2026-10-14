@@ -17,7 +17,7 @@ version: "1.0"
 nodes:
   - id: sentiment
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: |
       Analyze the sentiment of this text:
       {{input.text}}
@@ -26,7 +26,7 @@ nodes:
 
   - id: themes
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: |
       Extract key themes from this text:
       {{input.text}}
@@ -65,7 +65,7 @@ name: quick-summary
 nodes:
   - id: summarize
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: "Summarize: {{input.text}}"
 """
 
@@ -91,7 +91,7 @@ workflow = Workflow.from_yaml_url(
 nodes:
   - id: writer
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: |
       Write a {{input.style}} paragraph about {{input.topic}}.
     temperature: 0.7
@@ -99,7 +99,7 @@ nodes:
     
   - id: structured_output
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: "Extract entities from: {{input.text}}"
     output_format: json
     schema:
@@ -164,7 +164,7 @@ nodes:
 nodes:
   - id: quality_check
     type: critic
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     target_node: writer
     criteria:
       - "Content is factually accurate"
@@ -187,7 +187,7 @@ version: "1.0"
 # Reference environment variables
 env:
   API_ENDPOINT: ${API_ENDPOINT}
-  DEFAULT_MODEL: ${FIBONACCI_MODEL:-claude-sonnet-4-5-20250929}
+  DEFAULT_MODEL: ${FIBONACCI_MODEL:-claude-sonnet-5}
 
 # Reference secrets (from secure storage)
 secrets:
@@ -236,7 +236,7 @@ memory:
 nodes:
   - id: chatbot
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: |
       Conversation history:
       {{memory.history}}
@@ -255,7 +255,7 @@ nodes:
 nodes:
   - id: long_analysis
     type: llm
-    model: claude-opus-4-5-20251101
+    model: claude-opus-5
     prompt: "Deep analysis of: {{input.data}}"
     timeout: 120  # seconds
     
@@ -317,23 +317,23 @@ nodes:
   # These run in parallel (no dependencies between them)
   - id: sentiment_analysis
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: "Analyze sentiment: {{input.text}}"
     
   - id: entity_extraction
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: "Extract entities: {{input.text}}"
     
   - id: topic_classification
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: "Classify topics: {{input.text}}"
     
   # This waits for all parallel nodes
   - id: combine_results
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: |
       Combine these analysis results:
       Sentiment: {{sentiment_analysis}}
@@ -383,7 +383,7 @@ validation:
   require_descriptions: true
   max_nodes: 20
   allowed_models:
-    - claude-sonnet-4-5-20250929
+    - claude-sonnet-5
     - claude-haiku-4-5-20251001
   forbidden_tools:
     - http.request  # Require specific API tools instead
@@ -391,7 +391,7 @@ validation:
 nodes:
   - id: analyzer
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     description: "Analyzes input text for sentiment"  # Required
     prompt: "Analyze: {{input.text}}"
 ```
@@ -418,7 +418,7 @@ nodes:
   # Classify the inquiry
   - id: classify
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: |
       Classify this customer inquiry:
       {{input.message}}
@@ -451,7 +451,7 @@ nodes:
   # Generate standard response
   - id: standard_response
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: |
       Previous interactions:
       {{memory.customer_history}}
@@ -468,7 +468,7 @@ nodes:
   # Handle complaints specially
   - id: complaint_handler
     type: llm
-    model: claude-sonnet-4-5-20250929
+    model: claude-sonnet-5
     prompt: |
       Handle this complaint with empathy:
       {{input.message}}
@@ -530,7 +530,7 @@ outputs:
     ```yaml
     env:
       API_URL: ${API_URL}
-      MODEL: ${MODEL:-claude-sonnet-4-5-20250929}
+      MODEL: ${MODEL:-claude-sonnet-5}
     ```
   </Accordion>
 

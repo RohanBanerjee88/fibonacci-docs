@@ -15,12 +15,12 @@
   "topbarLinks": [
     {
       "name": "Dashboard",
-      "url": "https://app.fibonacci.dev"
+      "url": "https://app.fibonacci.today"
     }
   ],
   "topbarCtaButton": {
     "name": "Get Started",
-    "url": "https://app.fibonacci.dev/signup"
+    "url": "https://app.fibonacci.today"
   },
   "anchors": [
     {
@@ -46,6 +46,7 @@
               "getting-started/quickstart",
               "getting-started/installation",
               "getting-started/authentication",
+              "getting-started/connect-your-tools",
               "getting-started/your-first-workflow"
             ]
           },
@@ -55,6 +56,7 @@
               "guides/workflows",
               "guides/nodes",
               "guides/tool-nodes",
+              "guides/developer-workflows",
               "guides/conditional-logic",
               "guides/memory"
             ]
@@ -62,12 +64,19 @@
           {
             "group": "Advanced Guides",
             "pages": [
+              "guides/governance",
+              "guides/external-agents",
               "guides/yaml-workflows",
               "guides/cli",
               "guides/error-handling",
               "guides/security",
-              "guides/governance",
               "guides/best-practices"
+            ]
+          },
+          {
+            "group": "Updates",
+            "pages": [
+              "changelog"
             ]
           }
         ]

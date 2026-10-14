@@ -29,8 +29,8 @@ condition = ConditionalNode(
 | `not_equals` | Not equal | `"pending"` ≠ `"completed"` ✓ |
 | `contains` | Substring | `"error in line 5"` contains `"error"` ✓ |
 | `not_contains` | No substring | `"success"` not_contains `"error"` ✓ |
-| `greater_than` | Numeric > | `100` > `50` ✓ |
-| `less_than` | Numeric < | `25` < `50` ✓ |
+| `greater_than` | Numeric `>` | `100 > 50` ✓ |
+| `less_than` | Numeric `<` | `25 < 50` ✓ |
 | `starts_with` | Prefix match | `"error: msg"` starts_with `"error"` ✓ |
 | `ends_with` | Suffix match | `"file.pdf"` ends_with `".pdf"` ✓ |
 | `is_empty` | Empty/null | `""` is_empty ✓ |
@@ -78,7 +78,7 @@ escalate = ToolNode(
     tool="slack_send_message",
     params={
         "channel": "#customer-support",
-        "message": "⚠️ Negative feedback received!\n\n{{input.feedback}}"
+        "text": "⚠️ Negative feedback received!\n\n{{input.feedback}}"
     },
     dependencies=["check_negative"]
 )
@@ -87,11 +87,11 @@ escalate = ToolNode(
 log = ToolNode(
     id="log_feedback",
     name="Log Feedback",
-    tool="google_sheets_append",
+    tool="notion_create_page",
     params={
-        "spreadsheet_id": "{{input.log_sheet}}",
-        "range": "Feedback!A:C",
-        "values": [["{{timestamp}}", "{{analyze_sentiment}}", "{{input.feedback}}"]]
+        "parent_id": "{{input.feedback_db}}",
+        "title": "Feedback {{today}}",
+        "content": "{{analyze_sentiment}}\n\n{{input.feedback}}"
     },
     dependencies=["check_negative"]
 )
@@ -220,7 +220,7 @@ deep_analysis = LLMNode(
     id="deep_analysis",
     name="Deep Analysis",
     instruction="...",
-    model="claude-opus-4-5-20251101"  # Expensive model
+    model="claude-opus-5"  # Expensive model
 ).with_condition(
     left_value="{{input.data_size}}",
     operator="greater_than",
@@ -257,9 +257,9 @@ Handle potential failures gracefully:
 # Attempt API call
 api_call = ToolNode(
     id="api_call",
-    name="Call API",
-    tool="http_request",
-    params={...}
+    name="Check CI",
+    tool="github_get_checks",
+    params={"repo": "{{input.repo}}"}
 ).with_retry(max_retries=2)
 
 # Check for error in response

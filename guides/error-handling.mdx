@@ -81,7 +81,7 @@ from fibonacci import LLMNode, ToolNode, RetryConfig
 # Simple retry config
 analyzer = LLMNode(
     id="analyzer",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="Analyze: {{input.text}}",
     retry=RetryConfig(
         max_attempts=3,
@@ -161,7 +161,7 @@ from fibonacci import LLMNode, ToolNode
 # Fallback to simpler model
 primary = LLMNode(
     id="primary_analyzer",
-    model="claude-opus-4-5-20251101",
+    model="claude-opus-5",
     prompt="Complex analysis: {{input.text}}",
     fallback="fallback_analyzer"
 )
@@ -208,7 +208,7 @@ from fibonacci import LLMNode, ConditionalNode
 
 analyzer = LLMNode(
     id="analyzer",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="Analyze: {{input.text}}",
     on_error="error_handler"
 )
@@ -291,7 +291,7 @@ workflow = Workflow(name="graceful-degradation")
 # Primary: Full analysis with premium model
 full_analysis = LLMNode(
     id="full_analysis",
-    model="claude-opus-4-5-20251101",
+    model="claude-opus-5",
     prompt="Comprehensive analysis: {{input.text}}",
     timeout=60,
     on_error="degraded_analysis"
@@ -371,7 +371,7 @@ from fibonacci import LLMNode, ToolNode
 # LLM timeout
 slow_analyzer = LLMNode(
     id="deep_analysis",
-    model="claude-opus-4-5-20251101",
+    model="claude-opus-5",
     prompt="Deep analysis: {{input.text}}",
     timeout=120  # 2 minutes
 )
@@ -436,7 +436,7 @@ from fibonacci import LLMNode
 # Validate LLM output
 analyzer = LLMNode(
     id="analyzer",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="Return JSON: {{input.text}}",
     output_format="json",
     output_schema={

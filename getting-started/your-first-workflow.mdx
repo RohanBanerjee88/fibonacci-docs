@@ -45,7 +45,7 @@ read_data = ToolNode(
     tool="google_sheets_read",
     params={
         "spreadsheet_id": "{{input.sheet_id}}",
-        "range": "{{input.range}}"
+        "range_name": "{{input.range}}"
     }
 )
 
@@ -79,7 +79,7 @@ analyze = LLMNode(
     Format your response with clear sections and bullet points.
     """,
     dependencies=["read_sales"],  # This node depends on read_sales
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     max_tokens=2000
 )
 
@@ -134,7 +134,7 @@ read_data = ToolNode(
     tool="google_sheets_read",
     params={
         "spreadsheet_id": "{{input.sheet_id}}",
-        "range": "{{input.range}}"
+        "range_name": "{{input.range}}"
     }
 )
 
@@ -293,7 +293,7 @@ send_alert = ToolNode(
     tool="slack_send_message",
     params={
         "channel": "#sales-alerts",
-        "message": "⚠️ Sales Alert!\n\n{{executive_summary}}"
+        "text": "⚠️ Sales Alert!\n\n{{executive_summary}}"
     },
     dependencies=["check_alert", "executive_summary"]
 )

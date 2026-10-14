@@ -1,378 +1,229 @@
 ---
-title: 'Governance'
-description: 'Manage organization governance settings, quotas, tool policies, and workflow registry lifecycle'
+title: "Governance"
+description: "Decide what every tool call may do with company data: rules, labels, approvals, receipts and a tamper-evident audit log"
 ---
 
-Fibonacci's governance layer gives organization owners and admins control over approval workflows, resource quotas, tool access policies, and the workflow registry. All governance mutations require at minimum the **owner** role.
+Every tool call Fibonacci makes, and every tool call an [external agent](/guides/external-agents) asks about, is decided against your organization's rules before it runs. A call is **allowed**, **denied**, or **held for a human to approve**, and the decision is recorded.
 
-## Organization Governance Settings
+What makes the rules useful is that they know **where data came from**, not just which tool is being called.
 
-Governance settings control which workflow actions require human approval before execution.
+## An example
 
-### Get Current Settings
+One rule: *"Anything that sends data out needs approval if it touches both web content and internal data."*
 
-```bash
-GET /organizations/{id}/governance
-```
+| Step | The workflow calls | Fibonacci sees | Decision |
+|---|---|---|---|
+| 1 | `google_docs_read` (the roadmap) | output labelled `internal` | allow |
+| 2 | `web_search` (a partner FAQ) | output labelled `untrusted` | allow |
+| 3 | `slack_send_message` with `{{roadmap}}` and `{{faq}}` | inputs carry `internal` + `untrusted` | **held for approval** |
+
+If the FAQ page carried a prompt injection telling the model to post the roadmap, no single call looks wrong; the rule fires because of what the message is made of. An admin sees the held call in **Approvals** with the exact message, the rule and the labels, and approves or rejects it.
+
+---
+
+## Five ideas
+
+### 1. Side effects
+
+Every tool declares one: `read` (fetches data), `write` (changes something in a connected system: a ticket, a card, a page) or `egress` (delivers content to people or places: a message, an email, an invitation, a comment). Rules and the `read_only` role constraint key off this, never off a tool's name. The [tool catalog](/guides/tool-nodes) lists each tool's side effect.
+
+### 2. Labels
+
+Data carries labels such as `internal`, `confidential`, `untrusted` and `pii`.
+
+- **Tools label what they return.** Docs, Sheets, files, Jira, Trello and GitHub code are `internal`; web search results are `untrusted`; GitHub **issues** are both `internal` and `untrusted`, because anyone who can open an issue writes that text.
+- **Label rules add labels**, e.g. "reading sheet `cust-2026` is `confidential`".
+- **Labels follow the workflow.** A step's inputs carry the labels of every step it depends on or references with `{{…}}`. Parallel branches don't share labels.
+
+### 3. Rules
+
+*Action rules* match on side effect, tools, labels and parameters, and return a verdict: `allow`, `require_approval` or `deny`. When several match, the most restrictive wins.
 
 ```json
 {
-  "require_approval_for_external_comm": false,
-  "require_approval_for_public_writes": true,
-  "require_approval_for_permission_changes": true,
-  "allow_self_approval": false,
-  "approval_threshold": 1,
-  "category_flags": {
-    "financial": true,
-    "pii": true
-  }
+  "kind": "action",
+  "name": "Confidential data never leaves",
+  "match": {"side_effect": ["egress"], "labels_any": ["confidential"]},
+  "effect": {"verdict": "deny"}
 }
 ```
 
-### Update Settings
+### 4. Approvals
+
+A held step **pauses the run** where it is. Approving resumes it on the worker from that point. Steps that already finished never run again, and the approval covers that exact call (tool plus parameters) and nothing else.
+
+### 5. Receipts and audit
+
+Every tool call writes a decision with the rule that made it and the labels involved: `GET /api/v1/runs/{id}/authorization`. The audit log is append-only and hash-chained, and the database rejects edits to it. `GET /api/v1/organizations/{id}/audit-events/verify` recomputes the chain and reports the first entry that doesn't match.
+
+Before a run starts, Fibonacci analyses the whole plan. If a rule would **definitely** deny a step, the run is refused up front (`403`) and nothing executes. `POST /api/v1/workflows/{id}/authorization-preview` shows that analysis without running anything.
+
+---
+
+## Rules
+
+Rules belong to an organization. Fibonacci ships templates, and **nothing is active until an org saves a rule**.
 
 ```bash
-PATCH /organizations/{id}/governance
+GET  /api/v1/governance/rule-templates
+GET  /api/v1/organizations/{org_id}/governance/rules
+POST /api/v1/organizations/{org_id}/governance/rules           # owner
+PATCH /api/v1/organizations/{org_id}/governance/rules/{rule_id}
+DELETE /api/v1/organizations/{org_id}/governance/rules/{rule_id}
 ```
+
+Adopt a template:
+
+```json
+{"template_key": "untrusted-plus-internal-egress"}
+```
+
+| Template | What it does |
+|---|---|
+| `untrusted-plus-internal-egress` | **Approve sends that mix web content with internal data.** Egress whose inputs carry both `untrusted` and `internal` needs approval. Covers web search and GitHub issues. |
+| `confidential-no-egress` | **Confidential data never leaves.** Deny any egress whose inputs carry `confidential`. |
+| `pii-external-email` | **Approve emailing PII outside the company.** `gmail_send` with `pii` to a domain not in your list needs approval. Replace `example.com` with your domains. |
+
+### Rule fields
+
+| Field | Meaning |
+|---|---|
+| `kind` | `action` (returns a verdict) or `label` (adds labels) |
+| `match.side_effect` | Any of `read`, `write`, `egress` |
+| `match.tools` | Only these tool names |
+| `match.labels_any` / `labels_all` | The call's input labels include any / all of these |
+| `match.params` | Conditions on the call's parameters (below) |
+| `effect.verdict` | `allow`, `require_approval` or `deny` (action rules) |
+| `effect.add_labels` | Labels to add to the tool's output (label rules) |
+| `effect.approver_role` | Who may approve: `admin` (default) or `owner` |
+| `priority`, `enabled` | Ordering and on/off |
+
+Parameter operators: `equals`, `in`, `not_in`, `contains`, `startswith`, `domain_in`, `domain_not_in`.
+
+### Label rules
 
 ```json
 {
-  "require_approval_for_external_comm": true,
-  "allow_self_approval": false,
-  "approval_threshold": 2
-}
-```
-
-**Field reference:**
-
-| Field | Type | Description |
-|-------|------|-------------|
-| `require_approval_for_external_comm` | boolean | Gate workflows that send email, webhooks, or external HTTP calls |
-| `require_approval_for_public_writes` | boolean | Gate workflows that write to public-facing storage or APIs |
-| `require_approval_for_permission_changes` | boolean | Gate any action that modifies user/role permissions |
-| `allow_self_approval` | boolean | Whether a workflow's creator can approve their own execution request |
-| `approval_threshold` | integer | Minimum number of approvals required |
-| `category_flags` | object | Per-category override flags (e.g. `"financial": true`) |
-
-The risk service enforces these flags at execution time — matching workflows are queued for approval rather than running immediately.
-
-## Quota Management
-
-Quotas cap resource usage per organization. Plan defaults apply automatically; owners can override them up to platform-defined ceilings.
-
-### Get Quota Limits
-
-```bash
-GET /organizations/{id}/quota
-```
-
-```json
-{
-  "plan": "pro",
-  "limits": {
-    "workflow_runs_per_hour": 300,
-    "concurrent_executions": 10,
-    "memory_mb": 4096
+  "kind": "label",
+  "name": "Customer sheet is confidential",
+  "match": {
+    "tools": ["google_sheets_read"],
+    "params": {"spreadsheet_id": {"equals": "https://docs.google.com/spreadsheets/d/1AbC…/edit"}}
   },
-  "overrides": {
-    "workflow_runs_per_hour": 500
-  },
-  "effective": {
-    "workflow_runs_per_hour": 500,
-    "concurrent_executions": 10,
-    "memory_mb": 4096
-  }
+  "effect": {"add_labels": ["confidential"]}
 }
 ```
 
-### Set Quota Overrides
+- **Paste links.** Google Docs, Sheets, Slides and Drive links match the bare file ID a workflow uses, and the other way round.
+- **No placeholders.** A whole value like `<YOUR_SHEET_ID>` is rejected when you save (`422`) with a message to replace it.
 
-Requires **owner** role. Overrides are validated against plan ceilings.
+---
+
+## Approvals
+
+Approvals are opt-in: set `approvals_enabled` in the org's governance settings. Risk is assessed and audited either way.
+
+| Endpoint | Purpose |
+|---|---|
+| `GET /api/v1/approvals` | The inbox (your orgs) |
+| `GET /api/v1/approvals/{id}` | One request: the step, its exact parameters, the rule and labels |
+| `POST /api/v1/approvals/{id}/approve` | Approve; a paused run resumes on the worker |
+| `POST /api/v1/approvals/{id}/reject` | Reject; the run is cancelled with the reason |
+| `POST /api/v1/approvals/{id}/cancel` | Withdraw your own request |
+
+Besides rules, whole runs can need approval by **risk level**. Fibonacci scores a workflow from the tools it uses (sending messages and email is high; creating channels, pages, tickets and cards is medium; reading company data is medium), and runs at or above `approval_required_from` wait for approval before they start.
+
+---
+
+## Organization settings
 
 ```bash
-PATCH /organizations/{id}/quota
+GET   /api/v1/organizations/{org_id}/governance
+PATCH /api/v1/organizations/{org_id}/governance     # owner
+```
+
+| Field | Default | Meaning |
+|---|---|---|
+| `approvals_enabled` | `false` | Whether held steps and risky runs wait for approval |
+| `approval_required_from` | `high` | Lowest risk level that needs approval: `medium`, `high` or `critical` |
+| `approval_ttl_hours` | `72` | How long a pending approval stays actionable (1–720) |
+| `critical_requires_owner` | `true` | Critical-risk runs need an owner, not just an admin |
+| `self_approve_owner` | `false` | Whether owners can approve their own requests |
+| `require_approval_for_external_comm` | `false` | Any run that touches an external system needs approval |
+| `require_approval_for_public_writes` | `false` | Gate public writes |
+| `require_approval_for_permission_changes` | `false` | Gate permission changes (e.g. Drive sharing) |
+| `external_tools` | `{}` | Per-tool overrides for [external agents](/guides/external-agents): `{"mcp__crm__export": {"side_effect": "egress", "output_labels": ["pii"]}}` |
+
+## Tool policies
+
+Block a tool, or scope it, for the whole org or for one role:
+
+```bash
+PUT    /api/v1/organizations/{org_id}/tool-policies/{tool_name}                  # owner
+DELETE /api/v1/organizations/{org_id}/tool-policies/{tool_name}
+PUT    /api/v1/organizations/{org_id}/role-tool-policies/{role}/{tool_name}      # owner
+DELETE /api/v1/organizations/{org_id}/role-tool-policies/{role}/{tool_name}
 ```
 
 ```json
-{
-  "workflow_runs_per_hour": 500
-}
+{"allowed": true, "constraints": {"allowed_channels": ["#eng", "#alerts"]}}
 ```
 
-<Warning>
-Override values must be positive and cannot exceed 100× the plan default for any key. Invalid values are rejected with a `422` response. See [Security](/guides/security#quota-override-validation) for details.
-</Warning>
+| Constraint | Effect |
+|---|---|
+| `read_only` | Only tools whose side effect is `read` |
+| `allowed_channels` | Messages only to these channels |
+| `max_message_length` | Longest message allowed |
+| `allowed_repos` | GitHub tools only on these repositories |
 
-## Tool Policy Administration
+Without any policy, a tool works as soon as the person running it has connected it. Policies only ever narrow that. Role constraints narrow the org's: lists intersect and limits take the minimum. An org block always wins.
 
-Tool policies control which tools organization members can use, and optionally restrict usage by role.
-
-### Organization-Level Tool Policies
+## Quota
 
 ```bash
-# List all tool policies
-GET /organizations/{id}/tool-policies
-
-# Create a policy
-POST /organizations/{id}/tool-policies
+GET   /api/v1/organizations/{org_id}/quota     # limits and live usage
+PATCH /api/v1/organizations/{org_id}/quota     # owner: overrides
 ```
 
-```json
-{
-  "tool_name": "http.request",
-  "allowed": true,
-  "restrictions": {
-    "allowed_domains": ["api.example.com"],
-    "max_response_size_kb": 1024
-  }
-}
-```
+| Limit | Free | Pro | Enterprise |
+|---|---|---|---|
+| `exec_per_hour` | 60 | 100 | 1000 |
+| `concurrent_jobs` | 5 | 10 | 50 |
+| `max_queued` | 100 | 100 | 500 |
+| `max_runtime_seconds` | 300 | 1800 | 7200 |
+| `max_retries` | 3 | 5 | 10 |
+| `monthly_cost_usd` | 50 | 50 | 500 |
 
-<Note>
-The `tool_name` must exist in the tool registry. Unknown names return `422` with a hint to check `GET /tools`.
-</Note>
+A run over quota is refused when it's queued (`429`), with the limit it hit.
 
-### Role-Level Policy Overrides
+## Workflow versions and the registry
 
-Fine-tune access per role within the organization:
+Every execution runs a frozen **version** of the workflow, so a run is reproducible even if the workflow is edited later.
 
 ```bash
-# List role overrides
-GET /organizations/{id}/role-policy-overrides
-
-# Create an override
-POST /organizations/{id}/role-policy-overrides
+GET  /api/v1/workflows/{workflow_id}/versions
+GET  /api/v1/workflows/{workflow_id}/versions/{version_id}
+POST /api/v1/workflows/{workflow_id}/versions/{version_id}/rollback           # new version from an old one
+POST /api/v1/workflows/{workflow_id}/versions/{version_id}/approve-template   # owner: add to the org registry
+GET  /api/v1/organizations/{org_id}/workflow-registry
+POST /api/v1/workflow-registry/{entry_id}/deprecate
+POST /api/v1/workflow-registry/{entry_id}/archive
 ```
 
-```json
-{
-  "role": "developer",
-  "tool_name": "shell.exec",
-  "allowed": false
-}
-```
+## Reporting
 
-Role overrides take precedence over org-level policies. Evaluation order: role override → org policy → platform default (deny).
-
-## Workflow Version Management
-
-Every deployment of a workflow creates a version snapshot. Admins and owners can inspect and roll back versions.
-
-### List Versions
-
-Accessible to any active org member (member or viewer).
-
-```bash
-GET /workflows/{id}/versions
-```
-
-```json
-{
-  "versions": [
-    {
-      "version": 3,
-      "deployed_at": "2026-05-12T23:00:00Z",
-      "deployed_by": "user-123",
-      "message": "Add retry logic to API node"
-    },
-    {
-      "version": 2,
-      "deployed_at": "2026-05-10T14:00:00Z",
-      "deployed_by": "user-456",
-      "message": "Initial production deploy"
-    }
-  ]
-}
-```
-
-### Inspect a Version
-
-```bash
-GET /workflows/{id}/versions/{version}
-```
-
-Returns the full workflow definition snapshot for that version.
-
-### Roll Back
-
-Rollback creates a **new version snapshot** from the target version's definition rather than overwriting history.
-
-```bash
-POST /workflows/{id}/versions/{version}/rollback
-```
-
-```json
-{
-  "message": "Rolling back to v2 — v3 caused timeout errors"
-}
-```
-
-Response:
-
-```json
-{
-  "new_version": 4,
-  "rolled_back_from": 2,
-  "deployed_at": "2026-05-13T10:00:00Z"
-}
-```
-
-## Workflow Registry
-
-The workflow registry is an organization-level catalogue of approved workflow templates. Templates can be approved, deprecated, and archived through a structured lifecycle.
-
-### Lifecycle States
-
-```
-active ──► deprecated ──► archived
-  ▲
-  │ approve-template
-  │
-(draft workflow)
-```
-
-| State | Visible in registry | Usable as template |
-|-------|--------------------|-----------------|
-| active | Yes | Yes |
-| deprecated | Yes | Yes (with warning) |
-| archived | No (unless `?include_archived=true`) | No |
-
-### Approve as Template
-
-Requires **owner** role. Only workflows that belong to an organization can be approved (personal workflows are rejected with `400`).
-
-```bash
-POST /workflow-registry/{id}/approve-template
-```
-
-```json
-{
-  "template_name": "customer-support-v2",
-  "description": "Handles tier-1 support queries with escalation",
-  "tags": ["support", "production-ready"]
-}
-```
-
-### Deprecate a Template
-
-```bash
-POST /workflow-registry/{id}/deprecate
-```
-
-```json
-{
-  "reason": "Superseded by customer-support-v3",
-  "replacement_id": "wf-xyz789"
-}
-```
-
-### Archive a Template
-
-Archived templates are hidden from the default registry listing and cannot be used as templates. This action is not reversible via the API.
-
-```bash
-POST /workflow-registry/{id}/archive
-```
-
-### List Registry Entries
-
-```bash
-# Active and deprecated only (default)
-GET /workflow-registry
-
-# Include archived
-GET /workflow-registry?include_archived=true
-```
-
-## Governance Reporting
-
-### Summary Dashboard
-
-High-level governance health for the organization:
-
-```bash
-GET /organizations/{id}/governance/report
-```
-
-```json
-{
-  "period": "last_30_days",
-  "total_executions": 4820,
-  "gated_executions": 312,
-  "approved": 298,
-  "rejected": 14,
-  "approval_rate": 0.955,
-  "avg_approval_time_minutes": 8.3,
-  "top_approvers": [
-    {"user_id": "user-123", "approvals": 145}
-  ]
-}
-```
-
-### Paginated Audit Log
-
-Full governance event history with pagination:
-
-```bash
-GET /organizations/{id}/governance/audit?page=1&per_page=50
-```
-
-Optional filters:
-
-| Parameter | Description |
-|-----------|-------------|
-| `event_type` | Filter by event type (e.g. `approval.granted`, `quota.exceeded`) |
-| `user_id` | Filter by acting user |
-| `since` | ISO 8601 start date |
-| `until` | ISO 8601 end date |
-
-### Approval Statistics
-
-Breakdown of approval activity by workflow, user, and category:
-
-```bash
-GET /organizations/{id}/governance/approvals
-```
-
-```json
-{
-  "by_workflow": [
-    {
-      "workflow_id": "wf-abc123",
-      "name": "data-exporter",
-      "total": 58,
-      "approved": 55,
-      "rejected": 3
-    }
-  ],
-  "by_category": {
-    "external_comm": {"total": 120, "approved": 115},
-    "public_writes": {"total": 80, "approved": 78}
-  }
-}
-```
-
-## Access Requirements Summary
-
-| Operation | Minimum Role |
-|-----------|--------------|
-| Read governance settings | admin or owner |
-| Update governance settings | owner |
-| Read quota limits | admin or owner |
-| Set quota overrides | owner |
-| Read/write tool policies | owner |
-| List workflow versions | member or viewer |
-| Inspect/rollback workflow versions | admin or owner |
-| Approve/deprecate/archive registry entries | owner |
-| View governance reports | admin or owner |
-
-## Next Steps
+| Endpoint | What |
+|---|---|
+| `GET /api/v1/organizations/{org_id}/governance/summary` | Dashboard numbers |
+| `GET /api/v1/organizations/{org_id}/approvals/report` | Approval statistics over a window |
+| `GET /api/v1/organizations/{org_id}/audit-events` | The audit log, paginated |
+| `GET /api/v1/organizations/{org_id}/audit-events/verify` | Recompute the hash chain |
 
 <CardGroup cols={2}>
-  <Card title="Security" icon="shield-halved" href="/guides/security">
-    Production hardening, secrets backends, and audit logging
+  <Card title="External agents" icon="robot" href="/guides/external-agents">
+    The same rules for Claude Code and any MCP client
   </Card>
-  <Card title="Best Practices" icon="star" href="/guides/best-practices">
-    Production workflow patterns
+  <Card title="Security" icon="shield-halved" href="/guides/security">
+    Production hardening and secrets
   </Card>
 </CardGroup>
