@@ -83,6 +83,7 @@ Adopt a template:
 | `untrusted-plus-internal-egress` | **Approve sends that mix web content with internal data.** Egress whose inputs carry both `untrusted` and `internal` needs approval. Covers web search and GitHub issues. |
 | `confidential-no-egress` | **Confidential data never leaves.** Deny any egress whose inputs carry `confidential`. |
 | `pii-external-email` | **Approve emailing PII outside the company.** `gmail_send` with `pii` to a domain not in your list needs approval. Replace `example.com` with your domains. |
+| `confidential-out-of-shared-trackers` | **Confidential data stays out of shared trackers.** Deny creating or editing Jira issues and Trello cards whose inputs carry `confidential`. Those are writes, not egress, so `confidential-no-egress` doesn't cover them, but boards and projects are often widely shared. |
 
 ### Rule fields
 
@@ -138,7 +139,7 @@ If your org has connected Slack (**Organization → Integrations → Add to Slac
 - **When something waits**, to every admin and owner who can decide it (owners only when it needs an owner). The message says what is waiting (the tool and step, the workflow, or the agent), the rule and data labels or the risk reasons, who asked and when it expires, and links straight to it in **Approvals**.
 - **When it's decided**, to the person who asked: who approved or rejected it, their reason, and what happens next.
 
-Slack messages never include the call's parameters, which can hold customer data; the link opens them behind sign-in. People are found in Slack by their Fibonacci email. Turn the messages off with `slack_approval_notifications: false`. The Approvals inbox and the dashboard badge also refresh on their own.
+Slack messages never include the call's parameters, which can hold customer data; the link opens them behind sign-in. People are found in Slack by their Fibonacci email. If Slack is briefly unavailable or rate limiting, each message is retried once; a message that still can't be sent is logged, and the request is always in the Approvals inbox. Turn the messages off with `slack_approval_notifications: false`. The Approvals inbox and the dashboard badge also refresh on their own.
 
 Besides rules, whole runs can need approval by **risk level**. Fibonacci scores a workflow from the tools it uses (sending messages and email is high; creating channels, pages, tickets and cards is medium; reading company data is medium), and runs at or above `approval_required_from` wait for approval before they start.
 
