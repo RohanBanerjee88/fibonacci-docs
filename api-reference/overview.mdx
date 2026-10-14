@@ -1,225 +1,193 @@
 ---
-title: 'API Reference'
-description: 'Complete REST API reference for Fibonacci Cloud'
+title: "API Reference"
+description: "Every Fibonacci REST endpoint, grouped by what you're doing"
 ---
 
-The Fibonacci REST API allows you to programmatically manage workflows, execute them, and interact with the Fibonacci platform.
-
-## Base URL
+## Base URL and authentication
 
 ```
-https://api.fibonacci.dev/v1
+https://api.fibonacci.today/api/v1
 ```
 
-## Authentication
-
-All API requests require authentication via API key:
+Send `Authorization: Bearer <token>` with every request. The token is either a sign-in JWT or an **API key** (`fib_…`, created in the web app under Dashboard → Developer access, or with `POST /api-keys`). API keys carry **scopes**, such as `workflows:execute` or `agents:authorize`; `GET /api-keys/scopes` lists them.
 
 ```bash
-curl https://api.fibonacci.dev/v1/workflows \
-  -H "Authorization: Bearer YOUR_API_KEY"
+curl https://api.fibonacci.today/api/v1/workflows \
+  -H "Authorization: Bearer fib_..."
 ```
 
-Get your API key from the [Fibonacci Dashboard](https://app.fibonacci.dev/settings/api-keys).
+Interactive docs for a self-hosted API are at `/docs`.
 
-## Quick Reference
+## Responses and errors
+
+Successful responses are the resource itself as JSON. Errors use FastAPI's shape:
+
+```json
+{"detail": "Jira rejected the login. Check JIRA_EMAIL is the Atlassian account the API token belongs to…"}
+```
+
+| Status | Meaning |
+|---|---|
+| `400` / `422` | The request isn't valid; `detail` says which field and why |
+| `401` | Missing, expired or revoked token |
+| `403` | Not allowed: your role, a missing API-key scope, or a governance rule that would deny the run |
+| `404` | Doesn't exist, or isn't visible to you |
+| `429` | Rate limit or org quota reached; honour `Retry-After` |
+| `500` | An unexpected server error, still returned as JSON |
+
+Rate limits are per client: 300 requests a minute by default, 10 a minute on login and 5 an hour on registration.
+
+---
+
+## Run a workflow
+
+<Steps>
+  <Step title="Generate it from a sentence (optional)">
+    ```bash
+    curl -X POST https://api.fibonacci.today/api/v1/workflows/generate \
+      -H "Authorization: Bearer fib_..." -H "Content-Type: application/json" \
+      -d '{"description": "Get issue 23 in the abc repo, write a fix.md, email it to xyz and set a 1:1 with them", "auto_save": true}'
+    ```
+    The response has the `workflow`, any `validation_errors`, the `required_inputs` (e.g. `xyz_email`) and `required_secrets` (e.g. `GITHUB_TOKEN`), and an `estimated_cost`.
+  </Step>
+  <Step title="Execute it">
+    ```bash
+    curl -X POST https://api.fibonacci.today/api/v1/workflows/{workflow_id}/execute \
+      -H "Authorization: Bearer fib_..." -H "Content-Type: application/json" \
+      -d '{"input_data": {"xyz_email": "xyz@acme.com"}}'
+    ```
+    Returns `202 Accepted` with the run. `status` is `pending` (queued for a worker), or `paused` with `approval_required: true` and an `approval_request_id` when governance holds it first. A run that a rule would definitely deny is refused with `403`; `detail.blocking` names each step, the rule and the labels involved.
+  </Step>
+  <Step title="Follow it">
+    `GET /runs/{run_id}` for logs and node results, or stream the timeline as Server-Sent Events from `GET /runs/{run_id}/events`. `GET /runs/{run_id}/authorization` is the receipt: every tool call, its labels and the rule that decided it.
+  </Step>
+</Steps>
+
+---
+
+## Endpoints
+
+All paths below are under `/api/v1`.
 
 ### Workflows
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/workflows` | List all workflows |
-| `POST` | `/workflows` | Create a workflow |
-| `GET` | `/workflows/{id}` | Get workflow details |
-| `PUT` | `/workflows/{id}` | Update a workflow |
-| `DELETE` | `/workflows/{id}` | Delete a workflow |
+| Method | Path | |
+|---|---|---|
+| `POST` | `/workflows/generate` | Natural language → workflow (optionally save or execute) |
+| `GET` · `POST` | `/workflows` | List · create |
+| `GET` · `PATCH` · `DELETE` | `/workflows/{workflow_id}` | Read · update · delete |
+| `POST` | `/workflows/{workflow_id}/execute` | Queue a run (`202`) |
+| `POST` | `/workflows/{workflow_id}/authorization-preview` | What governance would decide for each step, without running |
+| `GET` | `/workflows/{workflow_id}/runs` | Runs of one workflow |
+| `GET` | `/workflows/{workflow_id}/stats`, `/stats` | Run statistics |
 
-### Execution
+### Runs
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/workflows/{id}/execute` | Execute a workflow |
-| `GET` | `/executions/{id}` | Get execution status |
-| `GET` | `/executions` | List executions |
-| `POST` | `/executions/{id}/cancel` | Cancel execution |
+| Method | Path | |
+|---|---|---|
+| `GET` | `/runs` | Your runs (personal and your orgs') |
+| `GET` | `/runs/{run_id}` | Logs, node results, errors, and why a run hasn't started yet |
+| `GET` | `/runs/{run_id}/events` | Live timeline (Server-Sent Events) |
+| `GET` | `/runs/{run_id}/authorization` | The governance receipt |
+| `POST` | `/runs/{run_id}/cancel` | Cancel a queued or running run |
+| `POST` | `/runs/{run_id}/retry` | Retry a failed or cancelled run as a new run |
 
-### Workflow Versions
+### Approvals
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/workflows/{id}/versions` | List all versions |
-| `GET` | `/workflows/{id}/versions/{version}` | Inspect a specific version |
-| `POST` | `/workflows/{id}/versions/{version}/rollback` | Roll back (creates a new snapshot) |
+| Method | Path | |
+|---|---|---|
+| `GET` | `/approvals` | The inbox |
+| `GET` | `/approvals/{approval_id}` | One request |
+| `POST` | `/approvals/{approval_id}/approve` · `/reject` · `/cancel` | Decide (a paused run resumes on approve) |
 
-### Workflow Registry
+### Governance
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/workflow-registry/{id}/approve-template` | Approve a workflow as an org template |
-| `POST` | `/workflow-registry/{id}/deprecate` | Mark a template as deprecated |
-| `POST` | `/workflow-registry/{id}/archive` | Archive a template |
-| `GET` | `/workflow-registry` | List registry entries (hides archived by default) |
+| Method | Path | |
+|---|---|---|
+| `GET` · `PATCH` | `/organizations/{org_id}/governance` | Settings |
+| `GET` | `/governance/rule-templates` | Built-in rules to adopt |
+| `GET` · `POST` | `/organizations/{org_id}/governance/rules` | List · create (or adopt a template) |
+| `PATCH` · `DELETE` | `/organizations/{org_id}/governance/rules/{rule_id}` | Edit · remove |
+| `GET` · `PATCH` | `/organizations/{org_id}/quota` | Limits and usage · overrides |
+| `GET` · `PUT` · `DELETE` | `/organizations/{org_id}/tool-policies[/{tool_name}]` | Org tool policies |
+| `GET` · `PUT` · `DELETE` | `/organizations/{org_id}/role-tool-policies[/{role}/{tool_name}]` | Per-role policies |
+| `GET` | `/organizations/{org_id}/audit-events` | Audit log |
+| `GET` | `/organizations/{org_id}/audit-events/verify` | Recompute the audit hash chain |
+| `GET` | `/organizations/{org_id}/governance/summary`, `/approvals/report` | Reporting |
 
-<Note>
-Pass `?include_archived=true` to `/workflow-registry` to include archived entries in the response.
-</Note>
+See [Governance](/guides/governance).
 
-### Organizations — Governance
+### External agents
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/organizations/{id}/governance` | Get governance settings |
-| `PATCH` | `/organizations/{id}/governance` | Update governance settings |
-| `GET` | `/organizations/{id}/governance/report` | Governance summary dashboard |
-| `GET` | `/organizations/{id}/governance/audit` | Paginated governance audit log |
-| `GET` | `/organizations/{id}/governance/approvals` | Approval statistics |
+| Method | Path | |
+|---|---|---|
+| `POST` | `/authorize` | Decide one agent tool call (scope `agents:authorize`) |
+| `POST` | `/authorize/observe` | Report what a finished call read |
+| `GET` | `/authorize/approvals/{approval_id}` | Poll an approval |
+| `POST` | `/authorize/sessions/end` | Close a session |
+| `GET` | `/agent-sessions` | Sessions in your orgs |
+| `POST` | `/agent-sessions/{session_id}/revoke` | Kill switch |
+| `GET` | `/integrations`, `/integrations/{name}` | Download the Claude Code hook and the MCP gateway (public) |
 
-### Organizations — Quotas
+See [External agents](/guides/external-agents).
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/organizations/{id}/quota` | Get quota limits (plan + overrides) |
-| `PATCH` | `/organizations/{id}/quota` | Set quota overrides (owner role required) |
+### Connections and secrets
 
-### Organizations — Tool Policies
+| Method | Path | |
+|---|---|---|
+| `GET` · `POST` | `/me/secrets` | Your Secrets Locker (names only are ever returned) |
+| `DELETE` | `/me/secrets/{secret_name}` | Remove a secret |
+| `GET` · `DELETE` | `/organizations/{org_id}/slack` | Org's Slack connection · disconnect |
+| `POST` | `/organizations/{org_id}/slack/install` | Start "Add to Slack" (admin) |
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/organizations/{id}/tool-policies` | List org-level tool policies |
-| `POST` | `/organizations/{id}/tool-policies` | Create a tool policy |
-| `PATCH` | `/organizations/{id}/tool-policies/{tool}` | Update a tool policy |
-| `DELETE` | `/organizations/{id}/tool-policies/{tool}` | Delete a tool policy |
-| `GET` | `/organizations/{id}/role-policy-overrides` | List role-level overrides |
-| `POST` | `/organizations/{id}/role-policy-overrides` | Create a role override |
-
-### Memory
-
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/memory/{key}` | Get memory value |
-| `PUT` | `/memory/{key}` | Set memory value |
-| `DELETE` | `/memory/{key}` | Delete memory value |
+See [Connect your tools](/getting-started/connect-your-tools).
 
 ### Tools
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/tools` | List available tools |
-| `GET` | `/tools/{name}` | Get tool details |
-| `POST` | `/tools/{name}/connect` | Connect a tool |
+| Method | Path | |
+|---|---|---|
+| `GET` | `/tools` | The full catalog with JSON schemas |
+| `GET` | `/tools/{tool_name}` | One tool |
+| `GET` | `/tools/search/{query}` | Search |
+| `GET` | `/tools-categories` | Categories |
 
-### Health
+### Versions and registry
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `GET` | `/health` | Service health check |
-| `GET` | `/health/secrets` | Secrets backend connectivity check |
+| Method | Path | |
+|---|---|---|
+| `GET` | `/workflows/{workflow_id}/versions[/{version_id}]` | Immutable versions |
+| `POST` | `/workflows/{workflow_id}/versions/{version_id}/rollback` | Roll back (creates a new version) |
+| `POST` | `/workflows/{workflow_id}/versions/{version_id}/approve-template` | Add to the org registry |
+| `GET` | `/organizations/{org_id}/workflow-registry` | The registry |
+| `POST` | `/workflow-registry/{entry_id}/deprecate` · `/archive` | Lifecycle |
 
-## Request Format
+### Organizations, keys and sign-in
 
-All requests should include:
+| Method | Path | |
+|---|---|---|
+| `POST` | `/organizations` | Create |
+| `GET` · `PATCH` | `/organizations/{org_id}` | Read · update |
+| `GET` · `DELETE` | `/organizations/{org_id}/members[/{user_id}]` | Members |
+| `POST` | `/organizations/{org_id}/invites`, `/invites/{token}/accept` | Invite links |
+| `GET` · `POST` · `PATCH` · `DELETE` | `/api-keys[/{key_id}]` | API keys; also `/revoke`, `/activate`, `/scopes` |
+| `POST` | `/auth/register`, `/auth/login`, `/auth/refresh`, `/auth/logout` | Password sign-in |
+| `GET` | `/auth/google`, `/auth/github` | OAuth sign-in |
+| `POST` | `/auth/mfa/setup` · `/enable` · `/verify` · `/disable` | Two-factor |
 
-```bash
-Content-Type: application/json
-Authorization: Bearer YOUR_API_KEY
-```
+### Skills, memory, analytics, jobs
 
-## Response Format
+| Area | Paths |
+|---|---|
+| Skills (slash commands) | `/skills`, `/skills/{skill_id}`, `/skills/resolve`, `/skills/preview`, `/skills/{skill_id}/invoke`, `/versions`, `/rollback` |
+| Memory | `/memory`, `/memory/{key}`, `/memory/list`, `/memory/search`, `/memory/batch`, `/memory/stats`, `/memory/cleanup` |
+| Analytics | `/analytics/cost-by-model`, `/cache-hit-rates`, `/token-savings`, `/top-workflows-by-cost`, `/trends` |
+| Critic | `/critic/workflows/{workflow_id}/analyze`, `/evaluations`, `/deploy-optimized`, `/critic/dashboard` |
+| Jobs and workers | `/jobs`, `/jobs/{job_id}`, `/jobs/dead-letter`, `/jobs/queue/summary`, `/jobs/{job_id}/requeue` · `/acknowledge` · `/force-cancel`, `/workers` |
 
-Successful responses return JSON:
+### Health (no auth)
 
-```json
-{
-  "data": { ... },
-  "meta": {
-    "request_id": "req_abc123"
-  }
-}
-```
-
-Error responses:
-
-```json
-{
-  "error": {
-    "code": "validation_error",
-    "message": "Invalid input",
-    "details": [...]
-  }
-}
-```
-
-## Rate Limits
-
-| Plan | Requests/minute | Requests/day |
-|------|-----------------|-------------|
-| Free | 60 | 1,000 |
-| Pro | 300 | 50,000 |
-| Enterprise | Custom | Custom |
-
-Rate limit headers are included in responses:
-
-```
-X-RateLimit-Limit: 60
-X-RateLimit-Remaining: 45
-X-RateLimit-Reset: 1706054400
-```
+`GET /health`, `GET /health/db`, `GET /health/secrets` (at the root, not under `/api/v1`).
 
 ## SDKs
 
-We recommend using our official SDKs:
-
-- **Python**: `pip install fibonacci-sdk`
-- **Node.js**: `npm install @fibonacci/sdk` (coming soon)
-
-## Example: Execute a Workflow
-
-```bash
-curl -X POST https://api.fibonacci.dev/v1/workflows/wf-abc123/execute \
-  -H "Authorization: Bearer YOUR_API_KEY" \
-  -H "Content-Type: application/json" \
-  -d '{
-    "inputs": {
-      "text": "Analyze this text"
-    }
-  }'
-```
-
-Response:
-
-```json
-{
-  "data": {
-    "execution_id": "exec_abc123",
-    "status": "completed",
-    "outputs": {
-      "analyzer": "The text sentiment is positive..."
-    },
-    "duration_ms": 1523,
-    "nodes_executed": 3,
-    "nodes_failed": 0
-  }
-}
-```
-
-## Example: Check Secrets Backend Health
-
-```bash
-curl https://api.fibonacci.dev/v1/health/secrets \
-  -H "Authorization: Bearer YOUR_API_KEY"
-```
-
-Response:
-
-```json
-{
-  "status": "healthy",
-  "backend": "aws_secrets_manager",
-  "checks": {
-    "list_secrets": "ok",
-    "get_secret": "ok"
-  }
-}
-```
-
-See the [Security guide](/guides/security) for IAM requirements and the [Governance guide](/guides/governance) for org-level policy endpoints.
+The Python SDK wraps these endpoints: `pip install fibonacci-sdk`. See the [SDK reference](/sdk-reference/overview).

@@ -1,0 +1,52 @@
+---
+title: "Connect Your Tools"
+description: "Where each integration's credentials go, and what a workflow can do once they're there"
+---
+
+Workflows act **as the person who runs them**. Most integrations read that person's credentials from their **Secrets Locker** (Dashboard → Secrets Locker). Values are encrypted at rest and never returned by the API, and a run only ever sees the secrets of the tools it calls.
+
+Two integrations connect through sign-in instead: **Google**, with your Google login, and **Slack**, which an org admin can connect for everyone.
+
+| Integration | How to connect | What it unlocks |
+|---|---|---|
+| Google (Gmail, Calendar, Docs, Sheets, Drive) | Settings → Integrations → sign in with Google | Send email with attachments, book meetings with Meet links, read Docs and Sheets, share Drive files |
+| Slack | Organization → Integrations → **Add to Slack** (admin, once), or `SLACK_BOT_TOKEN` in your Locker | Messages, DMs (`@me`), channels that invite you, file uploads |
+| Discord | `DISCORD_BOT_TOKEN`, `DISCORD_GUILD_ID`, optional `DISCORD_USER_ID` | Messages, DMs, channels under a "Fibonacci" category |
+| GitHub | `GITHUB_TOKEN` (Settings → Integrations, or the Locker) | Issues, files, code search, commits, PRs, CI checks; PR reviews |
+| Jira Cloud | `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN` | Read, search, create, update, transition and comment on issues |
+| Trello | `TRELLO_API_KEY`, `TRELLO_TOKEN` | Boards, cards, moving cards between lists, comments with files |
+| Notion | `NOTION_TOKEN` | Read, search and create pages |
+| Zoom | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET` | Create and look up meetings |
+
+**Organization → Integrations** in the web app has step-by-step setup for Slack, Discord, GitHub, Jira and Trello, including the Trello token link and the exact secret names.
+
+<Steps>
+  <Step title="Add the secrets">
+    Open the Secrets Locker and add each name exactly as written above (for example `JIRA_API_TOKEN`). The Locker shows only a short hint of each value afterwards.
+  </Step>
+  <Step title="Describe a workflow that uses them">
+    "Read issue 23 in acme/api and summarize it in my Jira ticket OPS-7." When you generate a workflow, the response lists `required_secrets`, so you can see what it will use before it runs.
+  </Step>
+  <Step title="Run it">
+    If a credential is missing or wrong, the step fails once with a message naming the secret and where to get it, for example *"Jira rejected the login. Check JIRA_EMAIL is the Atlassian account the API token belongs to…"*.
+  </Step>
+</Steps>
+
+## GitHub tokens
+
+A **fine-grained token** limited to the repositories you want is best. Give it read access to *Metadata, Contents, Issues, Pull requests, Commit statuses* and *Checks*. Add *Pull requests: write* only if workflows should post reviews or comments. Classic tokens need the `repo` scope.
+
+If your organization uses SAML single sign-on, authorize the token for it on GitHub (Settings → Personal access tokens → Configure SSO).
+
+## Server-wide fallbacks
+
+Self-hosting? The same names work as environment variables on the API (see `env.example`). A person's Locker entry always wins over the server's value, and an org's Slack connection wins over both for Slack.
+
+<CardGroup cols={2}>
+  <Card title="Tool integrations" icon="plug" href="/guides/tool-nodes">
+    Every tool, its parameters and outputs
+  </Card>
+  <Card title="Developer workflows" icon="code-branch" href="/guides/developer-workflows">
+    GitHub, Jira and Trello together
+  </Card>
+</CardGroup>

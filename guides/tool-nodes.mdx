@@ -1,520 +1,268 @@
 ---
 title: "Tool Integrations"
-description: "Connect workflows to external services with ToolNodes"
+description: "Every tool a workflow can call: what it does, its parameters, what it returns and what it needs"
 ---
 
-ToolNodes let you interact with external services like Google Sheets, Slack, Notion, databases, and HTTP APIs. Use `list_tools()` to see every tool available on your platform.
+A tool node calls one of Fibonacci's built-in integrations. This page lists all of them, as the platform runs them today. `GET /api/v1/tools` (or `list_tools()` in the SDK) returns the same catalog with full JSON schemas.
 
-## Using ToolNodes
+## Using a tool node
 
-### Basic Structure
+<CodeGroup>
 
-```python
+```python SDK
 from fibonacci import ToolNode
 
-node = ToolNode(
-    id="unique_id",           # Required: Unique identifier
-    name="Human Name",        # Required: Display name
-    tool="tool_name",         # Required: Tool to execute
-    params={                  # Required: Tool parameters
-        "param1": "value",
-        "param2": "{{input.field}}"
-    }
+read_issue = ToolNode(
+    id="read_issue",
+    name="Read the issue",
+    tool="github_get_issue",
+    params={"repo": "acme/api", "issue": "{{input.issue}}"},
 )
 ```
 
-### With Dependencies
-
-```python
-# Read data, then write to another sheet
-read = ToolNode(
-    id="read_source",
-    name="Read Source",
-    tool="google_sheets_read",
-    params={"spreadsheet_id": "...", "range": "A1:Z100"}
-)
-
-write = ToolNode(
-    id="write_dest",
-    name="Write Destination",
-    tool="google_sheets_write",
-    params={
-        "spreadsheet_id": "...",
-        "range": "A1",
-        "values": "{{read_source}}"
-    },
-    dependencies=["read_source"]
-)
+```json Workflow JSON
+{
+  "id": "read_issue",
+  "name": "Read the issue",
+  "type": "tool",
+  "tool_name": "github_get_issue",
+  "tool_params": {"repo": "acme/api", "issue": "{{input.issue}}"},
+  "dependencies": []
+}
 ```
+
+</CodeGroup>
+
+### Passing data between steps
+
+| Template | Resolves to |
+|---|---|
+| `{{input.name}}` | A workflow input |
+| `{{node_id}}` | A previous step's whole output (cut to about 6,000 characters) |
+| `{{node_id.field}}` | One field of a step's output, e.g. `{{create_channel.channel_id}}` or `{{read_issue.text}}` (not cut) |
+| `{{today}}`, `{{yesterday}}`, `{{now}}` | The run's start date (`YYYY-MM-DD`) and time (ISO 8601, UTC), fixed for the whole run |
+
+Templates work anywhere in `tool_params`, including inside lists and objects: `"attendees": ["{{input.email}}"]`.
+
+<Tip>
+  Tool outputs are objects. Pick the field you need (`{{create_channel.channel_id}}`): passing `{{create_channel}}` hands the whole JSON to a tool that expects an ID.
+</Tip>
+
+### Credentials
+
+Tools that talk to a service read their credentials from the **Secrets Locker** of the person running the workflow (or from your organization's connection, for Slack). See [Connect your tools](/getting-started/connect-your-tools). A tool whose credentials are missing fails with a message that names the secret to add; nothing else in the workflow is affected unless a later step needs its output.
+
+### Side effects
+
+Every tool declares what it does to the world, and [governance](/guides/governance) keys off that, never off the tool's name:
+
+- **read**: only fetches data
+- **write**: changes something inside a connected system (a ticket, a card, a page, a channel)
+- **egress**: delivers content to people or places outside the run (a message, an email, an invitation, a comment)
 
 ---
 
-## Tool Discovery
+## Developer tools
 
-### List All Tools
+Full guide: [Developer workflows](/guides/developer-workflows).
 
-```python
-from fibonacci import list_tools
+### GitHub
 
-tools = list_tools()
-for tool in tools:
-    print(f"{tool['name']}: {tool['description']}")
-```
+Needs `GITHUB_TOKEN`. Repositories can be `owner/name`, a link or just the name; issues and pull requests `23`, `#23`, `owner/name#23` or a link.
 
-### Search Tools
+| Tool | Side effect | Parameters (* required) | Returns |
+|---|---|---|---|
+| `github_get_issue` | read | `issue`*, `repo`, `include_comments`, `max_comments` | `text`, `title`, `body`, `labels`, `assignees`, `comments`, `url`, `number`, `repo` |
+| `github_list_issues` | read | `repo`*, `state`, `labels`, `assignee`, `query`, `limit` | `issues` (number, title, labels, assignees, url…) |
+| `github_get_file` | read | `repo`*, `path`*, `ref` | `content`, `url` (or `entries` for a folder) |
+| `github_search_code` | read | `repo`*, `query`*, `limit` | `results` (path, url, matches) |
+| `github_list_commits` | read | `repo`*, `branch`, `since`, `until`, `path`, `author`, `limit` | `commits` (sha, title, message, author, date, url) |
+| `github_list_pull_requests` | read | `repo`*, `state`, `limit` | `pull_requests` (…, `requested_reviewers`, `days_since_update`) |
+| `github_get_checks` | read | `repo`*, `ref` | `state`, `summary`, `failed`, `pending`, `passed` |
+| `github_get_pr` | read | `repo`*, `pr_number`* | `title`, `description`, `files` (with patches)… |
+| `github_post_pr_review` | egress | `repo`*, `pr_number`*, `body`*, `event`, `comments` | `review_id`, `html_url` |
+| `github_post_pr_comment` | egress | `repo`*, `pr_number`*, `body`* | `comment_id`, `html_url` |
 
-```python
-from fibonacci import search_tools
+### Jira (Cloud)
 
-# Find Google-related tools
-google_tools = search_tools("google")
+Needs `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`. Issues are a key (`OPS-7`) or a link. Descriptions and comments are Markdown.
 
-# Find email tools
-email_tools = search_tools("email")
-```
+| Tool | Side effect | Parameters (* required) | Returns |
+|---|---|---|---|
+| `jira_get_issue` | read | `issue`*, `include_comments` | `text`, `key`, `summary`, `status`, `assignee`, `description`, `comments`, `url` |
+| `jira_search_issues` | read | `jql`, `project`, `query`, `status`, `assignee`, `limit` | `issues` |
+| `jira_create_issue` | write | `project`*, `summary`*, `description`, `issue_type`, `assignee`, `labels`, `priority`, `due_date` | `key`, `url` |
+| `jira_update_issue` | write | `issue`*, `status`, `assignee`, `summary`, `description`, `labels`, `priority`, `due_date` | `key`, `changed`, `status`, `url` |
+| `jira_add_comment` | egress | `issue`*, `comment`*, `attachment_name`, `attachment_content` | `comment_id`, `attachment_url` |
 
-### Get Tool Schema
+`assignee` takes `me`, an email or a display name; `status` moves the issue through the transition that leads there.
 
-```python
-from fibonacci import print_tool_info
+### Trello
 
-# See full details including parameters and examples
-print_tool_info("google_sheets_read")
-```
+Needs `TRELLO_API_KEY`, `TRELLO_TOKEN`. Boards by name, link or ID; lists by name; cards by link, ID, or by name together with `board`.
 
-Output:
-```
-======================================================================
-🔧 google_sheets_read
-======================================================================
-Category: google_workspace
-Description: Read data from a Google Sheets spreadsheet
-Cost per use: $0.0001
-
-📥 Input Parameters:
-  • spreadsheet_id (string) - required
-    The ID of the spreadsheet
-  • range (string) - required
-    The A1 notation range to read (e.g., "Sheet1!A1:D10")
-
-📖 Examples:
-  1. Read sales data
-     Params: {"spreadsheet_id": "abc123", "range": "Sales!A1:E100"}
-======================================================================
-```
-
-### Find Tool for Task
-
-```python
-from fibonacci import find_tool_for_task
-
-# Describe what you want to do
-tool = find_tool_for_task("send a message to slack")
-print(tool)  # "slack_send_message"
-
-tool = find_tool_for_task("read data from google sheets")
-print(tool)  # "google_sheets_read"
-```
+| Tool | Side effect | Parameters (* required) | Returns |
+|---|---|---|---|
+| `trello_get_board` | read | `board`* | `lists` (each with its `cards`), `card_count`, `url` |
+| `trello_search_cards` | read | `query`*, `board`, `limit` | `cards` (name, url, list, board, due…) |
+| `trello_create_card` | write | `board`*, `list`*, `name`*, `description`, `due`, `members`, `labels`, `position` | `id`, `url` |
+| `trello_update_card` | write | `card`*, `board`, `list`, `name`, `description`, `due`, `due_complete`, `members`, `labels`, `archive` | `url`, `list`, `changed` |
+| `trello_add_comment` | egress | `card`*, `text`*, `board`, `attachment_name`, `attachment_content` | `comment_id`, `attachment_url` |
 
 ---
 
 ## Google Workspace
 
-### Google Sheets
+Sign in with Google (Settings → Integrations); runs use your Google login.
+
+| Tool | Side effect | Parameters (* required) | Returns |
+|---|---|---|---|
+| `google_docs_read` | read | `document_id`* | the document's text |
+| `google_sheets_read` | read | `spreadsheet_id`*, `range_name` | rows |
+| `gmail_send` | egress | `to`*, `subject`*, `body`*, `cc`, `bcc`, `attachment_name`, `attachment_content` | `message_id`, `attachment` |
+| `google_calendar_create_event` | egress | `summary`*, `start_time`, `end_time`, `attendees`, `description`, `duration_minutes`, `time_zone`, `add_meet_link` | `event_id`, `link`, `meet_link`, `start_time`, `end_time` |
+| `google_drive_permissions` | egress | `file_id`*, `email`*, `role` | `permission_id` |
+
+- `gmail_send` with `to: "me"` sends to whoever ran the workflow. `attachment_name` + `attachment_content` attach a text file, such as a generated `fix.md`.
+- `google_calendar_create_event` without `start_time` books the next business day at 10:00 in your calendar's time zone; without `end_time`, it lasts `duration_minutes` (30). `add_meet_link: true` adds Google Meet. Attendees get Google's invitation email.
+- Google Sheets and Docs IDs can be pasted as full links in [governance rules](/guides/governance#label-rules).
 
 <CodeGroup>
 
-```python Read
-read = ToolNode(
-    id="read_data",
-    name="Read Sheet Data",
-    tool="google_sheets_read",
-    params={
-        "spreadsheet_id": "1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgvE2upms",
-        "range": "Sheet1!A1:D100"
-    }
-)
-```
-
-```python Write
-write = ToolNode(
-    id="write_data",
-    name="Write to Sheet",
-    tool="google_sheets_write",
-    params={
-        "spreadsheet_id": "{{input.sheet_id}}",
-        "range": "Results!A1",
-        "values": [
-            ["Name", "Score", "Status"],
-            ["Alice", "95", "Pass"],
-            ["Bob", "82", "Pass"]
-        ]
-    }
-)
-```
-
-```python Append
-append = ToolNode(
-    id="append_row",
-    name="Append Row",
-    tool="google_sheets_append",
-    params={
-        "spreadsheet_id": "{{input.sheet_id}}",
-        "range": "Log!A:D",
-        "values": [["{{timestamp}}", "{{analyze_data}}"]]
-    }
-)
-```
-
-</CodeGroup>
-
-### Google Docs
-
-<CodeGroup>
-
-```python Read Document
-read_doc = ToolNode(
-    id="read_doc",
-    name="Read Document",
-    tool="google_docs_read",
-    params={
-        "document_id": "{{input.doc_id}}"
-    }
-)
-```
-
-```python Create Document
-create_doc = ToolNode(
-    id="create_doc",
-    name="Create Document",
-    tool="google_docs_create",
-    params={
-        "title": "{{input.title}}",
-        "content": "{{generate_report}}"
-    }
-)
-```
-
-</CodeGroup>
-
-### Gmail
-
-```python
-send_email = ToolNode(
-    id="send_email",
-    name="Send Email",
+```python Email a generated file
+send = ToolNode(
+    id="send_fix",
+    name="Send fix.md",
     tool="gmail_send",
     params={
-        "to": "recipient@example.com",
-        "subject": "Your Report is Ready",
-        "body": """
-        Hi {{input.recipient_name}},
-
-        Your weekly report is ready.
-
-        Summary:
-        {{executive_summary}}
-
-        Best,
-        Fibonacci Bot
-        """
-    }
+        "to": "{{input.reviewer_email}}",
+        "subject": "Fix plan: {{read_issue.title}}",
+        "body": "Plan attached.",
+        "attachment_name": "fix.md",
+        "attachment_content": "{{write_fix}}",
+    },
+    dependencies=["write_fix"],
 )
 ```
+
+```python Book a 1:1
+meeting = ToolNode(
+    id="one_on_one",
+    name="1:1",
+    tool="google_calendar_create_event",
+    params={
+        "summary": "1:1: {{read_issue.title}}",
+        "attendees": ["{{input.reviewer_email}}"],
+        "add_meet_link": True,
+    },
+)
+```
+
+</CodeGroup>
 
 ---
 
-## Communication Tools
+## Messaging
 
 ### Slack
 
+An org admin can connect the workspace once (**Organization → Integrations → Add to Slack**); runs in that org then post as the Fibonacci bot. Otherwise a member's `SLACK_BOT_TOKEN` is used.
+
+| Tool | Side effect | Parameters (* required) | Returns |
+|---|---|---|---|
+| `slack_send_message` | egress | `channel`*, `text`*, `thread_ts` | message details |
+| `slack_create_channel` | write | `name`*, `is_private`, `description`, `invite` | `channel_id`, `channel_name` |
+| `slack_upload_file` | egress | `channel`*, `file_path`*, `title`, `initial_comment` | file details |
+
+- `channel: "@me"` (or a person's email) is a **direct message**, which is what reaches a phone.
+- `slack_create_channel` invites the person who ran the workflow, plus anyone in `invite` (emails or member IDs). Someone who can't be invited shows as a warning in the run log; the channel is still created.
+- Errors such as `channel_not_found` name the workspace the bot is in and how to `/invite` it.
+
+### Discord
+
+Needs `DISCORD_BOT_TOKEN` and `DISCORD_GUILD_ID` (and `DISCORD_USER_ID` for `@me`). Setup: **Organization → Integrations → Discord**.
+
+| Tool | Side effect | Parameters (* required) | Returns |
+|---|---|---|---|
+| `discord_send_message` | egress | `channel`* (ID, `#name` or `@me`), `content`* | `channel_id`, `message_ids` |
+| `discord_create_channel` | write | `name`*, `topic`, `category` | `channel_id`, `channel_name`, `url` |
+
+Channels go under one "Fibonacci" category and are reused if they exist. Long messages are split at 2,000 characters, and mentions never ping.
+
+---
+
+## Notion and Zoom
+
+| Tool | Side effect | Needs | Parameters (* required) |
+|---|---|---|---|
+| `notion_read_page` | read | `NOTION_TOKEN` | `page_id`* |
+| `notion_search` | read | `NOTION_TOKEN` | `query`*, `filter_type` |
+| `notion_create_page` | write | `NOTION_TOKEN` | `parent_id`*, `title`*, `content`, `properties` |
+| `zoom_create_meeting` | write | `ZOOM_ACCOUNT_ID`, `ZOOM_CLIENT_ID`, `ZOOM_CLIENT_SECRET` | `topic`*, `start_time`*, `duration`, `agenda`, `timezone` |
+| `zoom_get_meeting` | read | same | `meeting_id`* |
+
+`notion_create_page` returns `page_id` and `url`; `zoom_create_meeting` returns `meeting_id`, `join_url` and `start_url`.
+
+---
+
+## Built in (no credentials)
+
+| Tool | Side effect | Parameters (* required) | Notes |
+|---|---|---|---|
+| `web_search` | read | `query`*, `num_results` | Live web search. Returns a short answer and the source URLs. Slow and paid per call: one subject per search, `num_results: 1` for a single fact. Never use it for today's date, which is `{{today}}`. Output is labelled `untrusted`. |
+| `text_analysis` | read | `text`*, `analysis_type` | Sentiment, key points, entities, themes |
+| `text_processor` | read | `text`*, `operation`, `params` | Extract lines, count words, clean whitespace… |
+| `file_reader` | read | `file_path`*, `encoding`, `file_type` | Reads text, CSV or JSON files from the server's sandboxed files folder (`FILE_READER_BASE_DIR`); nothing outside it |
+
+Files you attach when you run a workflow (PDF, Word, Excel, CSV) don't need a tool: their text reaches LLM steps as `{{input.uploaded_files}}`.
+
+---
+
+## Discovering tools
+
 <CodeGroup>
 
-```python Send Message
-slack_msg = ToolNode(
-    id="notify_team",
-    name="Notify Team",
-    tool="slack_send_message",
-    params={
-        "channel": "#team-updates",
-        "message": "🎉 Report generated!\n\n{{executive_summary}}"
-    }
-)
+```bash REST
+curl https://api.fibonacci.today/api/v1/tools \
+  -H "Authorization: Bearer fib_..."
+
+curl https://api.fibonacci.today/api/v1/tools/github_get_issue \
+  -H "Authorization: Bearer fib_..."
 ```
 
-```python Send to User
-slack_dm = ToolNode(
-    id="dm_user",
-    name="DM User",
-    tool="slack_send_message",
-    params={
-        "channel": "@john.doe",
-        "message": "Hey! Your task is complete."
-    }
-)
-```
+```python SDK
+from fibonacci import list_tools, search_tools, print_tool_info
 
-```python Rich Message
-slack_rich = ToolNode(
-    id="rich_msg",
-    name="Rich Message",
-    tool="slack_send_message",
-    params={
-        "channel": "#alerts",
-        "blocks": [
-            {
-                "type": "header",
-                "text": {"type": "plain_text", "text": "📊 Weekly Report"}
-            },
-            {
-                "type": "section",
-                "text": {"type": "mrkdwn", "text": "{{summary}}"}
-            }
-        ]
-    }
-)
+github_tools = search_tools("github")
+print_tool_info("github_get_issue")
 ```
 
 </CodeGroup>
 
 ---
 
-## HTTP & APIs
+## Timeouts and retries
 
-### Generic HTTP Request
-
-```python
-api_call = ToolNode(
-    id="call_api",
-    name="Call External API",
-    tool="http_request",
-    params={
-        "method": "POST",
-        "url": "https://api.example.com/data",
-        "headers": {
-            "Authorization": "Bearer {{input.api_token}}",
-            "Content-Type": "application/json"
-        },
-        "body": {
-            "query": "{{input.search_term}}",
-            "limit": 10
-        }
-    }
-)
-```
-
-### Webhook
+- Each call gets the node's `config.timeout`, or the tool's default: 30 seconds, and 90 for `web_search`.
+- A failed call is retried up to `config.max_retries` (3) times with a growing delay, **unless retrying can't help**: a bad or missing credential, a missing permission, something that doesn't exist, or an input that isn't valid. Those fail once, with a message that says what to change.
+- Mark steps whose failure shouldn't stop the run with `"config": {"continue_on_error": true}`, typically notifications:
 
 ```python
-webhook = ToolNode(
-    id="trigger_webhook",
-    name="Trigger Webhook",
-    tool="webhook_call",
-    params={
-        "url": "https://hooks.zapier.com/hooks/catch/123/abc",
-        "payload": {
-            "event": "report_generated",
-            "data": "{{report_data}}"
-        }
-    }
-)
+notify = ToolNode(
+    id="notify",
+    name="Tell me",
+    tool="slack_send_message",
+    params={"channel": "@me", "text": "{{summary}}"},
+).with_retry(max_retries=2, delay=2.0)
 ```
 
----
-
-## Database Tools
-
-### SQL Query
-
-```python
-query = ToolNode(
-    id="query_db",
-    name="Query Database",
-    tool="database_query",
-    params={
-        "connection_string": "{{secrets.DATABASE_URL}}",
-        "query": """
-            SELECT customer_id, SUM(amount) as total
-            FROM orders
-            WHERE date >= '{{input.start_date}}'
-            GROUP BY customer_id
-            ORDER BY total DESC
-            LIMIT 10
-        """
-    }
-)
-```
-
-<Warning>
-  Never hardcode database credentials. Use secrets management.
-</Warning>
-
----
-
-## Cloud Storage
-
-### AWS S3
-
-<CodeGroup>
-
-```python Upload
-s3_upload = ToolNode(
-    id="upload_s3",
-    name="Upload to S3",
-    tool="s3_upload",
-    params={
-        "bucket": "my-reports",
-        "key": "reports/{{input.report_id}}.pdf",
-        "content": "{{report_pdf}}",
-        "content_type": "application/pdf"
-    }
-)
-```
-
-```python Download
-s3_download = ToolNode(
-    id="download_s3",
-    name="Download from S3",
-    tool="s3_download",
-    params={
-        "bucket": "my-data",
-        "key": "data/{{input.file_name}}"
-    }
-)
-```
-
-</CodeGroup>
-
----
-
-## CRM & Business Tools
-
-### Salesforce
-
-```python
-create_lead = ToolNode(
-    id="create_lead",
-    name="Create Salesforce Lead",
-    tool="salesforce_create",
-    params={
-        "object": "Lead",
-        "data": {
-            "FirstName": "{{input.first_name}}",
-            "LastName": "{{input.last_name}}",
-            "Email": "{{input.email}}",
-            "Company": "{{input.company}}",
-            "Description": "{{qualify_lead}}"
-        }
-    }
-)
-```
-
-### HubSpot
-
-```python
-hubspot_contact = ToolNode(
-    id="update_contact",
-    name="Update HubSpot Contact",
-    tool="hubspot_update_contact",
-    params={
-        "email": "{{input.email}}",
-        "properties": {
-            "lead_score": "{{score_lead}}",
-            "last_activity": "{{timestamp}}"
-        }
-    }
-)
-```
-
-### Notion
-
-```python
-notion_page = ToolNode(
-    id="create_notion",
-    name="Create Notion Page",
-    tool="notion_create_page",
-    params={
-        "database_id": "{{input.database_id}}",
-        "properties": {
-            "Name": "{{input.title}}",
-            "Status": "Ready",
-            "Priority": "High"
-        },
-        "content": "{{generate_notes}}"
-    }
-)
-```
-
----
-
-## Tool Categories
-
-```python
-from fibonacci import list_tool_categories
-
-categories = list_tool_categories()
-for cat in categories:
-    print(f"{cat['name']}: {cat['count']} tools")
-    print(f"  Examples: {', '.join(cat['tools'][:3])}")
-```
-
-Output:
-```
-google_workspace: 7 tools
-  Examples: google_sheets_read, google_docs_read, gmail_send
-communication: 3 tools
-  Examples: slack_send_message, slack_upload_file, slack_create_channel
-databases: 3 tools
-  Examples: database_query, mongodb_find, redis_get
-cloud_storage: 2 tools
-  Examples: s3_upload, s3_download
-...
-```
-
----
-
-## Error Handling
-
-### Retry on Failure
-
-```python
-api_call = ToolNode(
-    id="api_call",
-    name="API Call",
-    tool="http_request",
-    params={...}
-).with_retry(max_retries=3, delay=2.0)
-```
-
-### Timeout Configuration
-
-```python
-slow_api = ToolNode(
-    id="slow_api",
-    name="Slow API",
-    tool="http_request",
-    params={...},
-    timeout=60  # override the 30s default
-)
-```
-
----
-
-## Next Steps
+## Next steps
 
 <CardGroup cols={2}>
-  <Card
-    title="Conditional Logic"
-    icon="code-branch"
-    href="/guides/conditional-logic"
-  >
-    Branch workflows based on tool outputs
+  <Card title="Developer workflows" icon="code-branch" href="/guides/developer-workflows">
+    GitHub, Jira and Trello, end to end
   </Card>
-  <Card
-    title="Memory System"
-    icon="database"
-    href="/guides/memory"
-  >
-    Store and retrieve data across runs
+  <Card title="Governance" icon="shield-halved" href="/guides/governance">
+    Rules, approvals and receipts for every tool call
   </Card>
 </CardGroup>

@@ -74,14 +74,14 @@ workflow = Workflow(name="content-pipeline")
 # Step 1: Generate outline
 outliner = LLMNode(
     id="create_outline",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="Create an outline for: {{input.topic}}"
 )
 
 # Step 2: Write draft
 writer = LLMNode(
     id="write_draft",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="Write content following this outline: {{create_outline}}",
     dependencies=["create_outline"]
 )
@@ -89,7 +89,7 @@ writer = LLMNode(
 # Step 3: Edit and polish
 editor = LLMNode(
     id="edit_content",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="Edit for clarity and style: {{write_draft}}",
     dependencies=["write_draft"]
 )
@@ -97,7 +97,7 @@ editor = LLMNode(
 # Step 4: Final review
 reviewer = LLMNode(
     id="final_review",
-    model="claude-opus-4-5-20251101",  # Premium model for final check
+    model="claude-opus-5",  # Premium model for final check
     prompt="Final quality review: {{edit_content}}",
     dependencies=["edit_content"]
 )
@@ -132,7 +132,7 @@ summary = LLMNode(
 # Combine results
 combine = LLMNode(
     id="combine",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="""
     Combine these analyses:
     Sentiment: {{sentiment}}
@@ -152,13 +152,13 @@ from fibonacci import LLMNode, CriticNode
 
 writer = LLMNode(
     id="writer",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="Write a professional email: {{input.request}}"
 )
 
 critic = CriticNode(
     id="quality_critic",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     target_node="writer",
     criteria=[
         "Professional tone throughout",
@@ -186,7 +186,7 @@ critic = CriticNode(
 ```python
 analyzer = LLMNode(
     id="analyzer",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="""You are analyzing customer feedback for a software company.
 
 <context>
@@ -222,7 +222,7 @@ Return JSON:
 ```python
 classifier = LLMNode(
     id="intent_classifier",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="""Classify the customer intent.
 
 <examples>
@@ -253,7 +253,7 @@ Classify this input following the same format as the examples."""
 # Structured JSON output
 structured_node = LLMNode(
     id="structured",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="Analyze: {{input.text}}",
     output_format="json",
     output_schema={
@@ -276,7 +276,7 @@ structured_node = LLMNode(
 # Node-level timeout
 node = LLMNode(
     id="analyzer",
-    model="claude-opus-4-5-20251101",
+    model="claude-opus-5",
     prompt="...",
     timeout=60  # 60 seconds
 )
@@ -298,7 +298,7 @@ workflow = Workflow(name="resilient-analysis")
 # Premium analysis with expensive model
 premium = LLMNode(
     id="premium_analysis",
-    model="claude-opus-4-5-20251101",
+    model="claude-opus-5",
     prompt="Detailed analysis: {{input.text}}",
     timeout=60,
     on_error="standard_analysis"
@@ -307,7 +307,7 @@ premium = LLMNode(
 # Standard fallback
 standard = LLMNode(
     id="standard_analysis",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="Analysis: {{input.text}}",
     timeout=30,
     on_error="basic_analysis"
@@ -349,8 +349,8 @@ api_node = ToolNode(
 | Use Case | Recommended Model |
 |----------|------------------|
 | Simple classification | claude-haiku-4-5-20251001 |
-| General tasks | claude-sonnet-4-5-20250929 |
-| Complex reasoning | claude-opus-4-5-20251101 |
+| General tasks | claude-sonnet-5 |
+| Complex reasoning | claude-opus-5 |
 | High volume, low cost | claude-haiku-4-5-20251001 |
 
 ```python
@@ -364,7 +364,7 @@ classifier = LLMNode(
 # Use Opus for complex analysis
 deep_analyzer = LLMNode(
     id="deep_analysis",
-    model="claude-opus-4-5-20251101",  # Most capable
+    model="claude-opus-5",  # Most capable
     prompt="Provide comprehensive analysis: {{input.text}}"
 )
 ```
@@ -503,12 +503,12 @@ environments:
     log_level: debug
     
   staging:
-    model_default: claude-sonnet-4-5-20250929
+    model_default: claude-sonnet-5
     timeout_default: 60
     log_level: info
     
   production:
-    model_default: claude-sonnet-4-5-20250929
+    model_default: claude-sonnet-5
     timeout_default: 120
     log_level: warning
     retry_default: 3

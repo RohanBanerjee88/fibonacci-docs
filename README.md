@@ -1,6 +1,6 @@
-# Fibonacci SDK Documentation
+# Fibonacci Documentation
 
-This repository contains the documentation for the Fibonacci SDK, built with [Mintlify](https://mintlify.com).
+The documentation for Fibonacci (the platform, its REST API and the Python SDK), built with [Mintlify](https://mintlify.com).
 
 ## 🚀 Quick Start
 
@@ -27,12 +27,13 @@ This documentation auto-deploys to Mintlify when you push to the `main` branch.
 ```
 ├── docs.json              # Mintlify configuration
 ├── index.mdx              # Landing page
+├── changelog.mdx          # What changed, newest first
 ├── favicon.svg            # Site favicon
 ├── logo/
 │   ├── light.svg          # Logo for light mode
 │   └── dark.svg           # Logo for dark mode
-├── getting-started/       # Getting started guides
-├── guides/                # In-depth guides
+├── getting-started/       # Quickstart, authentication, connecting your tools
+├── guides/                # Workflows, tools, developer workflows, governance, external agents
 ├── sdk-reference/         # Python SDK reference
 └── api-reference/         # REST API reference
 ```
@@ -48,6 +49,11 @@ This documentation auto-deploys to Mintlify when you push to the `main` branch.
 1. Create an `.mdx` file in the appropriate directory
 2. Add frontmatter with `title` and `description`
 3. Add the page to `docs.json` navigation
+
+Tool names, parameters and API paths must match the backend (fibonacci-mainframe):
+`GET /api/v1/tools` lists every tool with its schema, and `/docs` on the API lists
+every endpoint. In MDX, keep `{{templates}}` and `<`/`>` inside backticks or code
+blocks; bare ones break the page.
 
 Example:
 

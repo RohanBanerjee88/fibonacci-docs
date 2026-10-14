@@ -83,7 +83,7 @@ from fibonacci import LLMNode
 
 chat_node = LLMNode(
     id="chatbot",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="""You are a helpful assistant. 
     
 Previous conversation:
@@ -104,7 +104,7 @@ from fibonacci import LLMNode
 
 summarize_node = LLMNode(
     id="summarizer",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="Summarize: {{input.text}}",
     memory_write={
         "key": "last_summary",
@@ -131,7 +131,7 @@ def create_chatbot():
     # Chat node that reads history and generates response
     chat_node = LLMNode(
         id="chat",
-        model="claude-sonnet-4-5-20250929",
+        model="claude-sonnet-5",
         prompt="""You are a friendly assistant with memory of past conversations.
 
 Conversation history:
@@ -193,7 +193,7 @@ workflow = Workflow(name="preference-learner")
 # Analyze user input for preferences
 analyzer = LLMNode(
     id="analyze_preferences",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="""Analyze this user input for implicit preferences:
 {{input.message}}
 
@@ -215,7 +215,7 @@ Only include fields where you detected a clear preference.""",
 # Generate personalized response
 responder = LLMNode(
     id="respond",
-    model="claude-sonnet-4-5-20250929",
+    model="claude-sonnet-5",
     prompt="""Respond to: {{input.message}}
 
 Adapt your response style based on user preferences:

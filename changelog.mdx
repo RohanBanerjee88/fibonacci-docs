@@ -1,0 +1,51 @@
+---
+title: "Changelog"
+description: "What changed in Fibonacci, newest first"
+---
+
+<Update label="October 2026" description="Developer workflows">
+  **GitHub, Jira and Trello.** A request like *"get issue 23 in the abc repo, find the key issues and make a fix.md, send it to xyz, set a 1:1 with xyz and update the work in Trello"* now runs end to end. [Developer workflows →](/guides/developer-workflows)
+
+  - **GitHub reads**: `github_get_issue`, `github_list_issues`, `github_get_file`, `github_search_code`, `github_list_commits`, `github_list_pull_requests`, `github_get_checks`. Repositories by name or link; issues as `23`, `#23` or a link. Issue text is labelled `internal` + `untrusted`.
+  - **Jira Cloud**: read, search (JQL or plain filters), create, update (status via the right transition) and comment with attachments.
+  - **Trello**: see boards, search, create, move between lists by name, comment with attachments.
+  - **Files travel**: `gmail_send`, `jira_add_comment` and `trello_add_comment` attach a generated file (`attachment_name` + `attachment_content`). `gmail_send` takes `to: "me"`.
+  - **Meetings without a time**: `google_calendar_create_event` books the next business day at 10:00 in your calendar's time zone, with an optional Google Meet link.
+  - Templates resolve inside lists and objects (`"attendees": ["{{input.email}}"]`).
+  - The generator sees every tool's optional parameters, and asks for a person's email as an input instead of inventing one.
+  - **Organization → Integrations → Developer tools** walks through each setup.
+</Update>
+
+<Update label="October 2026" description="Reaching people">
+  - **Add to Slack**: an org admin installs the Fibonacci bot once; runs in the org post as it.
+  - Slack channels a workflow creates **invite the person who ran it**; `channel: "@me"` is a direct message.
+  - **Discord**: `discord_send_message` (channel, `#name` or `@me`) and `discord_create_channel` (under one "Fibonacci" category).
+  - **Built-in dates**: `{{today}}`, `{{yesterday}}`, `{{now}}`, fixed at the run's start.
+  - **Web search** is faster and cheaper (Haiku 5.5, up to 3 searches, with a fallback model).
+  - Approving a step paused mid-run resumes the run; tools get their own timeouts (web search: 90s).
+  - Rules match what people paste (Google links match file IDs); placeholders like `<YOUR_ID>` are rejected.
+  - Tool errors say what to change, and failures that retrying can't fix aren't retried.
+</Update>
+
+<Update label="September 2026" description="Governance for workflows and agents">
+  - Every tool declares a **side effect** (read / write / egress); `read_only` roles key off it.
+  - **Labels and rules**: labels follow data along the workflow; action rules allow, deny or require approval; label rules add labels. Templates ship inactive.
+  - **Plan analysis** refuses a run a rule would definitely deny (`403`) before anything executes.
+  - **Mid-run approvals**: a held step pauses the run, and approval resumes it without re-running finished steps.
+  - **Receipts**: `GET /runs/{id}/authorization`. The **audit log** is hash-chained and append-only; `/audit-events/verify` checks it.
+  - **External agents**: `POST /authorize`, a Claude Code hook and an MCP gateway apply the same rules to agents Fibonacci doesn't run, with a per-session kill switch. [External agents →](/guides/external-agents)
+  - **Quota is enforced** per plan (free: 60 runs/hour, 5 concurrent, 100 queued, $50/month).
+  - Google tools use your Google sign-in.
+  - **Live run events** over Server-Sent Events (`GET /runs/{id}/events`).
+</Update>
+
+<Update label="June 2026" description="Reliability">
+  - Attach PDFs, Word, Excel and CSV files to a run; their text reaches LLM steps as `{{input.uploaded_files}}`.
+  - A background worker runs queued workflows; `GET /runs/{id}` explains why a run hasn't started.
+  - Tools work as soon as you connect them; admins can still block or scope them.
+  - `file_reader` is sandboxed to one folder.
+</Update>
+
+<Update label="May 2026" description="Production hardening">
+  - Governance settings, quotas, tool policies, workflow versions and the registry; secrets backends; CLI updates.
+</Update>
