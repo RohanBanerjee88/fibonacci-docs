@@ -11,6 +11,25 @@ https://api.fibonacci.today/api/v1
 
 Send `Authorization: Bearer <token>` with every request. The token is either a sign-in JWT or an **API key** (`fib_…`, created in the web app under Dashboard → Developer access, or with `POST /api-keys`). API keys carry **scopes**, such as `workflows:execute` or `agents:authorize`; `GET /api-keys/scopes` lists them.
 
+An API key can only do what its scopes say: every endpoint names the scope it needs, and a key without it gets `403 API key missing required scope: …`.
+
+| Scope | What it allows |
+|---|---|
+| `workflows:read` | View workflows, runs, skills, tools, stats and analytics |
+| `workflows:write` | Create, edit and delete workflows and skills |
+| `workflows:execute` | Run, retry and cancel workflows; invoke skills |
+| `jobs:read` · `jobs:write` · `memory:read` · `memory:write` | Scheduled jobs; memory |
+| `secrets:read` · `secrets:write` | Your Secrets Locker (reading lists names, never values) |
+| `api_keys:read` · `api_keys:write` | Your API keys |
+| `organizations:read` · `organizations:write` | Your organizations, members and invites |
+| `approvals:*` · `governance:*` · `tool_policies:*` · `workflow_registry:*` · `audit:read` | Org administration |
+| `agents:authorize` | Only the [external-agent](/guides/external-agents) endpoints |
+
+The first four rows are the **standard** set a new key gets by default. The account scopes (`secrets`, `api_keys`, `organizations`) are opt-in.
+
+- **A key can't make itself bigger.** A key with `api_keys:write` can only create, change, revoke or reactivate keys **no broader than itself**, and a key it creates expires no later than it does. Signed in, you can create any key.
+- **Account security needs you signed in:** changing your password, MFA, logout and the developer shell refuse API keys, whatever their scopes. `GET /auth/me` works with any key.
+
 ```bash
 curl https://api.fibonacci.today/api/v1/workflows \
   -H "Authorization: Bearer fib_..."

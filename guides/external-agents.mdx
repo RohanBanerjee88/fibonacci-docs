@@ -127,6 +127,8 @@ Org tool policies apply by tool name too, for example blocking `Bash` for the `m
 
 The **Agents** page in the web app shows every live session and revokes one in a click.
 
+A session belongs to the organization it started in (`FIBONACCI_ORG_ID`; without it, the key owner's organization, so set it if you belong to several). The caller's role is checked **in that organization** on every call. A call that names a different organization is denied, and so is anyone who has left the organization: start a new session to work elsewhere. These come back as `deny` decisions, never errors, so `FIBONACCI_FAIL_MODE=open` can't turn them into an allow.
+
 ### Calling `/authorize` from your own agent
 
 ```bash

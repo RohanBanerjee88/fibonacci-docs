@@ -184,9 +184,9 @@ DELETE /api/v1/organizations/{org_id}/role-tool-policies/{role}/{tool_name}
 | `read_only` | Only tools whose side effect is `read` |
 | `allowed_channels` | Messages only to these channels |
 | `max_message_length` | Longest message allowed |
-| `allowed_repos` | GitHub tools only on these repositories |
+| `allowed_repos` | GitHub tools only on these repositories, checked on the repository each request actually reaches: links, `owner/name#7` references and search filters included. Searches across a whole org, a user or all of GitHub are refused. |
 
-Without any policy, a tool works as soon as the person running it has connected it. Policies only ever narrow that, **including for someone who saved their own token**: a personal token only decides which credential a call uses, never whether a role may make it. Role constraints narrow the org's: lists intersect and limits take the minimum. An org block always wins.
+Without any policy, a tool works as soon as the person running it has connected it. Policies only ever narrow that, **including for someone who saved their own token**: a personal token only decides which credential a call uses, never whether a role may make it. Role constraints narrow the org's: lists intersect, limits take the minimum, and `read_only` holds if either side sets it. An org block always wins.
 
 ## Quota
 

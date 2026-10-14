@@ -363,7 +363,7 @@ fibonacci auth create-key --name "production" \
 ```
 
 <Note>
-API key scopes are returned by the API as a `Dict[str, bool]` map (e.g. `{"runs:read": true, "runs:write": false}`). The SDK's `APIKeyInfo.scopes` field accepts both this dict form and the legacy list form.
+API key scopes are returned by the API as a `Dict[str, bool]` map (e.g. `{"workflows:read": true, "workflows:execute": true}`). The SDK's `APIKeyInfo.scopes` field accepts both this dict form and the legacy list form. The scopes and what each allows are listed in the [API reference](/api-reference/overview).
 </Note>
 
 ## Audit Logging
