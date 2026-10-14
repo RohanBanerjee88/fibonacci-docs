@@ -3,6 +3,12 @@ title: "Changelog"
 description: "What changed in Fibonacci, newest first"
 ---
 
+<Update label="October 2026" description="Approvals on Slack, and a permissions fix">
+  - **Approvals reach people.** With Slack connected, admins who can decide get a DM when something waits for approval, linking straight to it, and the requester gets a DM when it's decided. Parameters never go to Slack. [Governance → Who hears about it](/guides/governance#who-hears-about-it)
+  - The Approvals inbox and the dashboard badge refresh on their own.
+  - **Security fix:** a member who saved their own token for a tool could get past their role's limits on it (a role block, read-only, allowed channels). Role and org limits now apply whoever's token is used.
+</Update>
+
 <Update label="October 2026" description="Developer workflows">
   **GitHub, Jira and Trello.** A request like *"get issue 23 in the abc repo, find the key issues and make a fix.md, send it to xyz, set a 1:1 with xyz and update the work in Trello"* now runs end to end. [Developer workflows →](/guides/developer-workflows)
 

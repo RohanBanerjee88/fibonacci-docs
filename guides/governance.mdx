@@ -131,6 +131,15 @@ Approvals are opt-in: set `approvals_enabled` in the org's governance settings. 
 | `POST /api/v1/approvals/{id}/reject` | Reject; the run is cancelled with the reason |
 | `POST /api/v1/approvals/{id}/cancel` | Withdraw your own request |
 
+### Who hears about it
+
+If your org has connected Slack (**Organization → Integrations → Add to Slack**), the Fibonacci bot sends DMs:
+
+- **When something waits**, to every admin and owner who can decide it (owners only when it needs an owner). The message says what is waiting (the tool and step, the workflow, or the agent), the rule and data labels or the risk reasons, who asked and when it expires, and links straight to it in **Approvals**.
+- **When it's decided**, to the person who asked: who approved or rejected it, their reason, and what happens next.
+
+Slack messages never include the call's parameters, which can hold customer data; the link opens them behind sign-in. People are found in Slack by their Fibonacci email. Turn the messages off with `slack_approval_notifications: false`. The Approvals inbox and the dashboard badge also refresh on their own.
+
 Besides rules, whole runs can need approval by **risk level**. Fibonacci scores a workflow from the tools it uses (sending messages and email is high; creating channels, pages, tickets and cards is medium; reading company data is medium), and runs at or above `approval_required_from` wait for approval before they start.
 
 ---
@@ -152,6 +161,7 @@ PATCH /api/v1/organizations/{org_id}/governance     # owner
 | `require_approval_for_external_comm` | `false` | Any run that touches an external system needs approval |
 | `require_approval_for_public_writes` | `false` | Gate public writes |
 | `require_approval_for_permission_changes` | `false` | Gate permission changes (e.g. Drive sharing) |
+| `slack_approval_notifications` | `true` | DM approvers on Slack when something waits, and the requester when it's decided (needs Slack connected) |
 | `external_tools` | `{}` | Per-tool overrides for [external agents](/guides/external-agents): `{"mcp__crm__export": {"side_effect": "egress", "output_labels": ["pii"]}}` |
 
 ## Tool policies
@@ -176,7 +186,7 @@ DELETE /api/v1/organizations/{org_id}/role-tool-policies/{role}/{tool_name}
 | `max_message_length` | Longest message allowed |
 | `allowed_repos` | GitHub tools only on these repositories |
 
-Without any policy, a tool works as soon as the person running it has connected it. Policies only ever narrow that. Role constraints narrow the org's: lists intersect and limits take the minimum. An org block always wins.
+Without any policy, a tool works as soon as the person running it has connected it. Policies only ever narrow that, **including for someone who saved their own token**: a personal token only decides which credential a call uses, never whether a role may make it. Role constraints narrow the org's: lists intersect and limits take the minimum. An org block always wins.
 
 ## Quota
 
