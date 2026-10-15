@@ -5,7 +5,7 @@ description: "What changed in Fibonacci, newest first"
 
 <Update label="October 2026" description="Security fixes from an external review">
   - **Each run keeps its own credentials.** Two people's runs at the same moment could share a token: a run without its own GitHub, Slack, Jira or other credential could use the one another run had just applied.
-  - **API keys only do what their scopes say.** Every endpoint now names its scope, a key can't create or reactivate a key broader than itself, and password and MFA changes need you signed in. New scopes: `workflows:write`, `secrets:*`, `api_keys:*`, `organizations:*`; existing keys keep the access they had. [Scopes →](/api-reference/overview)
+  - **API keys only do what their scopes say.** Every endpoint now names its scope, a key can't create or reactivate a key broader than itself, and password and MFA changes need you signed in. New scopes: `workflows:write`, `secrets:*`, `api_keys:*`, `organizations:*`. Existing keys with the standard scopes get them, so they keep working; a key you had limited to a few scopes doesn't, and a call it now can't make says which scope it needs. [Scopes →](/api-reference/overview)
   - **`allowed_repos` holds on links, searches and `..` paths**, not only on the `repo` parameter.
   - **Jira credentials only go to `JIRA_BASE_URL`**, over HTTPS; links to other sites are refused.
   - **Agent sessions stay in their organization**, and a member who leaves is denied on their open sessions.
