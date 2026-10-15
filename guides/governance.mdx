@@ -167,25 +167,36 @@ PATCH /api/v1/organizations/{org_id}/governance     # owner
 
 ## Tool policies
 
-Block a tool, or scope it, for the whole org or for one role:
+Block a tool, or narrow what it may do, for the whole org or for one role (`owner`, `admin`, `member`, `viewer`).
+
+**In the dashboard:** go to **Governance → Tool permissions**. Pick who the policy applies to and the tool, then set its access and limits. The editor only shows the settings that can affect that tool: a GitHub tool offers allowed repositories, and Slack offers channels and a message length. You can paste a github.com link for a repository. Each role's row shows the limits that apply once the org's policy is combined with it, and warns when the two leave nothing allowed. Owners make changes; admins see the policies.
+
+**Through the API:**
 
 ```bash
+GET    /api/v1/organizations/{org_id}/tool-policies                              # admin or owner
 PUT    /api/v1/organizations/{org_id}/tool-policies/{tool_name}                  # owner
-DELETE /api/v1/organizations/{org_id}/tool-policies/{tool_name}
+DELETE /api/v1/organizations/{org_id}/tool-policies/{tool_name}                  # owner
+GET    /api/v1/organizations/{org_id}/role-tool-policies                         # admin or owner
 PUT    /api/v1/organizations/{org_id}/role-tool-policies/{role}/{tool_name}      # owner
-DELETE /api/v1/organizations/{org_id}/role-tool-policies/{role}/{tool_name}
+DELETE /api/v1/organizations/{org_id}/role-tool-policies/{role}/{tool_name}      # owner
+GET    /api/v1/governance/tool-constraints                                       # which settings each tool takes
 ```
 
 ```json
 {"allowed": true, "constraints": {"allowed_channels": ["#eng", "#alerts"]}}
 ```
 
-| Constraint | Effect |
-|---|---|
-| `read_only` | Only tools whose side effect is `read` |
-| `allowed_channels` | Messages only to these channels |
-| `max_message_length` | Longest message allowed |
-| `allowed_repos` | GitHub tools only on these repositories, checked on the repository each request actually reaches: links, `owner/name#7` references and search filters included. Searches across a whole org, a user or all of GitHub are refused, and so is a file path or ref containing `..`. |
+On a role policy, `"allowed": null` keeps the org's access and only adds limits. `false` blocks the tool for that role.
+
+| Constraint | Effect | Applies to |
+|---|---|---|
+| `read_only` | Only tools whose side effect is `read` | Any tool that writes or sends, agent tools included |
+| `allowed_channels` | Messages and uploads only to these channels | Tools with a `channel`: Slack, Discord |
+| `max_message_length` | Longest message allowed, in characters | The message a tool sends: `text` (Slack, Trello comments) or `content` (Discord, a Notion page body) |
+| `allowed_repos` | GitHub tools only on these repositories, checked on the repository each request actually reaches: links, `owner/name#7` references and search filters included. Searches across a whole org, a user or all of GitHub are refused, and so is a file path or ref containing `..`. | GitHub tools |
+
+`GET /api/v1/governance/tool-constraints` returns this table for every tool, which is what the dashboard uses. For [external agents](/guides/external-agents), a policy names the agent's tool (`Bash`, `Write`, or `mcp__<server>__<tool>`), and only blocks and `read_only` apply.
 
 Without any policy, a tool works as soon as the person running it has connected it. Policies only ever narrow that, **including for someone who saved their own token**: a personal token only decides which credential a call uses, never whether a role may make it. Role constraints narrow the org's: lists intersect, limits take the minimum, and `read_only` holds if either side sets it. An org block always wins.
 

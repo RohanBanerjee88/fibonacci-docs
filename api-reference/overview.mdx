@@ -130,6 +130,7 @@ All paths below are under `/api/v1`.
 | `GET` · `PATCH` | `/organizations/{org_id}/quota` | Limits and usage · overrides |
 | `GET` · `PUT` · `DELETE` | `/organizations/{org_id}/tool-policies[/{tool_name}]` | Org tool policies |
 | `GET` · `PUT` · `DELETE` | `/organizations/{org_id}/role-tool-policies[/{role}/{tool_name}]` | Per-role policies |
+| `GET` | `/governance/tool-constraints` | Which policy settings each tool takes |
 | `GET` | `/organizations/{org_id}/audit-events` | Audit log |
 | `GET` | `/organizations/{org_id}/audit-events/verify` | Recompute the audit hash chain |
 | `GET` | `/organizations/{org_id}/governance/summary`, `/approvals/report` | Reporting |
