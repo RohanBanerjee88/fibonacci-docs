@@ -3,6 +3,12 @@ title: "Changelog"
 description: "What changed in Fibonacci, newest first"
 ---
 
+<Update label="October 2026" description="Tool permissions in the dashboard">
+  - **Governance → Tool permissions**: owners block a tool or set its limits for the whole org or one role, without the API. The editor shows only the settings that affect the chosen tool, and each role's row shows its limits once combined with the org's. [Tool policies →](/guides/governance#tool-policies)
+  - **The message length limit now covers Discord.** `max_message_length` only checked Slack-style `text`, so a Discord message got past it; it now checks `content` too.
+  - New endpoint `GET /api/v1/governance/tool-constraints`: which policy settings each tool takes.
+</Update>
+
 <Update label="October 2026" description="Security fixes from an external review">
   - **Each run keeps its own credentials.** Two people's runs at the same moment could share a token: a run without its own GitHub, Slack, Jira or other credential could use the one another run had just applied.
   - **API keys only do what their scopes say.** Every endpoint now names its scope, a key can't create or reactivate a key broader than itself, and password and MFA changes need you signed in. New scopes: `workflows:write`, `secrets:*`, `api_keys:*`, `organizations:*`. Existing keys with the standard scopes get them, so they keep working; a key you had limited to a few scopes doesn't, and a call it now can't make says which scope it needs. [Scopes →](/api-reference/overview)
