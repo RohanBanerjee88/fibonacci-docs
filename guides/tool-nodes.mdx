@@ -85,7 +85,7 @@ Needs `GITHUB_TOKEN`. Repositories can be `owner/name`, a link or just the name;
 
 ### Jira (Cloud)
 
-Needs `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`. Issues are a key (`OPS-7`) or a link. Descriptions and comments are Markdown.
+Needs `JIRA_BASE_URL`, `JIRA_EMAIL`, `JIRA_API_TOKEN`. Issues are a key (`OPS-7`) or a link. Descriptions and comments are Markdown. Your Jira credentials only ever go to `JIRA_BASE_URL`, over HTTPS: a link to another Jira site is refused, not followed.
 
 | Tool | Side effect | Parameters (* required) | Returns |
 |---|---|---|---|

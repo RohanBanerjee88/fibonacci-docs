@@ -103,7 +103,7 @@ Labels are **session-wide** for agents: once a session has read something `inter
 | Read, Grep, Glob, LS, NotebookRead | read | `internal` |
 | WebFetch, WebSearch | read | `untrusted` |
 | Edit, MultiEdit, Write, NotebookEdit | write | |
-| Bash | **egress** if the command sends data out (`curl`/`wget` to a URL, `git push`, `gh pr create`, `scp`, `npm publish`, `aws s3 cp … s3://`…), otherwise write | |
+| Bash | **egress** if the command sends data out (`curl`/`wget` to a URL, `git push`, `gh pr create`, `scp`, `npm publish`, `aws s3 cp … s3://`…), or if it runs a script (`python`, `node`, `sh -c`, `./script.sh`, `npx`…, also through a variable, `eval`, `xargs`, `timeout` or `find -exec`) once the session has read company data; otherwise write | |
 | MCP tools (`mcp__server__tool`) | by the verbs in the name: send/post/create/comment/share/upload → egress; web/browse/scrape/crawl (or a tool named exactly `fetch`) → read + `untrusted`; get/list/read/search → read + `internal`; anything else → write | |
 
 When unsure, a tool counts as **write**, never read. MCP annotations only make classification stricter (`openWorldHint: true` turns a write into egress). Override any tool per org in the governance settings' `external_tools`:
@@ -113,6 +113,10 @@ When unsure, a tool counts as **write**, never read. MCP annotations only make c
 ```
 
 Org tool policies apply by tool name too, for example blocking `Bash` for the `member` role.
+
+<Warning>
+A script's command line doesn't show what it sends, so once a session holds anything but web content, `python -c …`, `node -e …` and other script runners count as **egress**, and rules like "Confidential data never leaves" apply to them. Fibonacci reads the command the way the shell runs it, so quotes, line breaks, variables and wrappers don't hide the program, and a command too long or tangled to read counts as a script. Test and build commands (`pytest`, `npm test`, `make`) are not counted, so agents can keep working. Matching commands is still a heuristic (a program copied under another name isn't recognised): for a hard boundary on where data can go, also run the agent with a network sandbox, such as Claude Code's sandbox with an allowlist of hosts.
+</Warning>
 
 ## Sessions and the kill switch
 
@@ -126,6 +130,8 @@ Org tool policies apply by tool name too, for example blocking `Bash` for the `m
 | `POST /api/v1/agent-sessions/{id}/revoke` | **Kill switch**: every further call in that session is denied |
 
 The **Agents** page in the web app shows every live session and revokes one in a click.
+
+A session belongs to the organization it started in (`FIBONACCI_ORG_ID`; without it, the key owner's organization, so set it if you belong to several). The caller's role is checked **in that organization** on every call. A call that names a different organization is denied, and so is anyone who has left the organization: start a new session to work elsewhere. These come back as `deny` decisions, never errors, so `FIBONACCI_FAIL_MODE=open` can't turn them into an allow.
 
 ### Calling `/authorize` from your own agent
 
