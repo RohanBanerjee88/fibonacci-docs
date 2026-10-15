@@ -6,11 +6,11 @@ description: "What changed in Fibonacci, newest first"
 <Update label="October 2026" description="Security fixes from an external review">
   - **Each run keeps its own credentials.** Two people's runs at the same moment could share a token: a run without its own GitHub, Slack, Jira or other credential could use the one another run had just applied.
   - **API keys only do what their scopes say.** Every endpoint now names its scope, a key can't create or reactivate a key broader than itself, and password and MFA changes need you signed in. New scopes: `workflows:write`, `secrets:*`, `api_keys:*`, `organizations:*`; existing keys keep the access they had. [Scopes →](/api-reference/overview)
-  - **`allowed_repos` holds on links and searches**, not only on the `repo` parameter.
+  - **`allowed_repos` holds on links, searches and `..` paths**, not only on the `repo` parameter.
   - **Jira credentials only go to `JIRA_BASE_URL`**, over HTTPS; links to other sites are refused.
   - **Agent sessions stay in their organization**, and a member who leaves is denied on their open sessions.
   - **A role can't lift the org's `read_only`.**
-  - **Agent scripts count as egress** once a session has read company data, so `python -c "…upload…"` is caught by egress rules like `curl` is. [External agents →](/guides/external-agents#how-agent-tools-are-classified)
+  - **Agent scripts count as egress** once a session has read company data, so `python -c "…upload…"` is caught by egress rules like `curl` is, also when the program hides behind a variable, quotes or a wrapper. [External agents →](/guides/external-agents#how-agent-tools-are-classified)
   - New template **Confidential data stays out of shared trackers** (Jira issues, Trello cards).
   - Slack approval messages are retried once when Slack is briefly unavailable.
   - MFA users are no longer signed out at their first token refresh.
